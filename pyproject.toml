@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "overcodex"
+version = "0.1.0"
+description = "Codex CLI, overclocked — cold multi-account switching, context-threshold handoff, instrumented statusline, and AGENTS.md routing policy for multi-agent workflows"
+readme = "README.md"
+license = { text = "MIT" }
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+authors = [{ name = "arthur-bump-pm" }]
+keywords = ["codex", "codex-cli", "cli", "dotfiles"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+]
+
+[project.urls]
+Homepage = "https://github.com/arthur-bump-pm/overcodex"
+Repository = "https://github.com/arthur-bump-pm/overcodex"
+Issues = "https://github.com/arthur-bump-pm/overcodex/issues"
+
+[project.scripts]
+overcodex = "overcodex.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/overcodex"]
+
+# The kit payload: the same files ./install.sh uses from a git clone, mapped
+# into the wheel so `pipx install` / `uv tool install` carries everything.
+[tool.hatch.build.targets.wheel.force-include]
+"bin" = "overcodex/payload/bin"
+"hooks" = "overcodex/payload/hooks"
+"config" = "overcodex/payload/config"
+"codex" = "overcodex/payload/codex"
+"prompts" = "overcodex/payload/prompts"
+"shell" = "overcodex/payload/shell"
+"install.sh" = "overcodex/payload/install.sh"
+"uninstall.sh" = "overcodex/payload/uninstall.sh"
+
+# hatchling's default sdist build respects VCS-ignore files and otherwise
+# only guarantees the `src/` package tree; it does NOT guarantee the payload
+# directories consumed above by force-include. Without this explicit list,
+# a source distribution built from a checkout with a permissive .gitignore
+# (or built with `--no-vcs`) could ship a wheel that silently drops parts of
+# the installer payload. Enumerate every path the wheel force-include needs,
+# plus packaging metadata, so the sdist is always sufficient to rebuild the
+# wheel from scratch.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/bin",
+    "/hooks",
+    "/config",
+    "/codex",
+    "/prompts",
+    "/shell",
+    "/install.sh",
+    "/uninstall.sh",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+]

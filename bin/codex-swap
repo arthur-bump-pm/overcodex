@@ -1,0 +1,320 @@
+#!/usr/bin/env bash
+# codex-swap — cold multi-account manager for the Codex CLI.
+#
+# Design: CODEX_HOME-per-account isolation. Codex refresh tokens can be
+# single-use across COPIES of auth.json, so accounts are never created by
+# copying credentials — each account gets its own real $CODEX_HOME directory
+# under ~/.codex-accounts/<name>/ and logs in there directly. This is a COLD
+# switch by design: a running `codex` process reads its credentials once at
+# startup, so switching the active account never affects sessions already
+# running — only new `codex` invocations (via the codex() shell wrapper) pick
+# it up. There is no hot-swap here; that's a different kit's trick.
+#
+# Layout:
+#   ~/.codex                    the PRIMARY account (name: "primary", implicit,
+#                                never created/removed by this tool)
+#   ~/.codex-accounts/<name>/   one directory per additional account
+#   ~/.codex-accounts/.active   one line: the active account name (or absent /
+#                                "primary" for the default)
+#
+# Per account, "add" symlinks the SHARED config in from the primary home
+# (AGENTS.md, prompts/, hooks/, hooks.json, config.toml) so every account
+# runs the same routing/hooks setup. auth.json and all session/thread state
+# are always per-account: real files, never symlinked, never copied.
+#
+# Subcommands:
+#   add <name>              create (or repair) an account, linking shared config
+#   list [--json]           accounts, which is active, login state
+#   use <name|primary>      set the active-account marker (cold switch)
+#   which                   print the active account name + its CODEX_HOME
+#   remove <name> [--yes]   delete an account (never removes primary)
+set -u
+
+HOME_DIR="${HOME:?codex-swap: \$HOME is not set}"
+PRIMARY_HOME="$HOME_DIR/.codex"
+ACCOUNTS_ROOT="$HOME_DIR/.codex-accounts"
+ACTIVE_FILE="$ACCOUNTS_ROOT/.active"
+PRIMARY_LABEL="primary"
+
+# Shared across every account (symlinked from the primary home by `add`).
+SHARED_ITEMS="AGENTS.md prompts hooks hooks.json config.toml"
+
+usage() {
+  cat >&2 <<'EOF'
+usage: codex-swap <subcommand> [args]
+  add <name>              create/repair an account under ~/.codex-accounts/<name>
+                          (symlinks shared config from primary; prints login steps)
+  list [--json]           accounts + active marker + login state
+  use <name|primary>      set the active account marker (cold switch — restart
+                          running codex sessions to adopt it)
+  which                   print the active account name and its CODEX_HOME
+  remove <name> [--yes]   delete an account's directory (never removes primary)
+
+"primary" always refers to the default $HOME/.codex and is never created,
+listed as a file, or removable — it's the account you get with no marker set.
+EOF
+  exit 2
+}
+
+die() { echo "codex-swap: $1" >&2; exit 1; }
+
+charset_ok() {
+  case "$1" in
+    '') return 1 ;;
+    *[!A-Za-z0-9_-]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+home_for() {
+  if [ "$1" = "$PRIMARY_LABEL" ]; then
+    printf '%s\n' "$PRIMARY_HOME"
+  else
+    printf '%s\n' "$ACCOUNTS_ROOT/$1"
+  fi
+}
+
+active_name() {
+  local n=""
+  if [ -f "$ACTIVE_FILE" ]; then
+    n="$(tr -d '[:space:]' <"$ACTIVE_FILE" 2>/dev/null)"
+  fi
+  [ -n "$n" ] || n="$PRIMARY_LABEL"
+  printf '%s\n' "$n"
+}
+
+# human_age <epoch-seconds> — coarse relative-time string.
+human_age() {
+  local mtime="$1" now diff
+  case "$mtime" in ''|*[!0-9]*) printf 'unknown age\n'; return 0 ;; esac
+  now="$(date +%s)"
+  diff=$(( now - mtime ))
+  [ "$diff" -ge 0 ] || diff=0
+  if   [ "$diff" -lt 60 ];    then printf '%ss ago\n'  "$diff"
+  elif [ "$diff" -lt 3600 ];  then printf '%sm ago\n'  $(( diff / 60 ))
+  elif [ "$diff" -lt 86400 ]; then printf '%sh ago\n'  $(( diff / 3600 ))
+  else                             printf '%sd ago\n'  $(( diff / 86400 ))
+  fi
+}
+
+# auth_status <codex_home> — one-line login state for the account.
+auth_status() {
+  local ch="$1" f mtime
+  f="$ch/auth.json"
+  if [ -f "$f" ]; then
+    mtime="$(stat -f %m "$f" 2>/dev/null)" || mtime=""
+    printf 'logged in (auth.json %s)\n' "$(human_age "$mtime")"
+  else
+    printf 'not logged in (no auth.json)\n'
+  fi
+}
+
+# all_account_names — "primary" then every dir under ACCOUNTS_ROOT, one per line.
+all_account_names() {
+  printf '%s\n' "$PRIMARY_LABEL"
+  [ -d "$ACCOUNTS_ROOT" ] || return 0
+  local d n
+  for d in "$ACCOUNTS_ROOT"/*/; do
+    [ -d "$d" ] || continue
+    n="$(basename "$d")"
+    printf '%s\n' "$n"
+  done
+}
+
+cmd_add() {
+  local name="${1:-}" acc_dir is_new item src dst
+  [ -n "$name" ] || { echo "usage: codex-swap add <name>" >&2; exit 2; }
+  charset_ok "$name" || die "invalid name '$name' — use letters, digits, - and _ only"
+  [ "$name" != "$PRIMARY_LABEL" ] || die "'$PRIMARY_LABEL' is reserved for \$CODEX_HOME ($PRIMARY_HOME) — pick another name"
+
+  [ -d "$PRIMARY_HOME" ] || echo "codex-swap: warning: primary CODEX_HOME ($PRIMARY_HOME) does not exist yet — shared items will be skipped" >&2
+
+  acc_dir="$ACCOUNTS_ROOT/$name"
+  is_new=1
+  [ -d "$acc_dir" ] && is_new=0
+  mkdir -p "$acc_dir" || die "could not create $acc_dir"
+
+  echo "== codex-swap add $name =="
+  echo "  account home: $acc_dir"
+  for item in $SHARED_ITEMS; do
+    src="$PRIMARY_HOME/$item"
+    dst="$acc_dir/$item"
+    if [ -e "$dst" ] || [ -L "$dst" ]; then
+      if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then
+        echo "  [=] already linked: $item"
+      else
+        echo "  [!] leaving as-is (exists, not our symlink): $item" >&2
+      fi
+      continue
+    fi
+    if [ -e "$src" ]; then
+      if ln -s "$src" "$dst" 2>/dev/null; then
+        echo "  [+] linked: $item -> $src"
+      else
+        echo "  [!] failed to link: $item" >&2
+      fi
+    else
+      echo "  [-] skip (not present in primary yet): $item"
+    fi
+  done
+
+  echo
+  if [ "$is_new" -eq 1 ]; then
+    echo "Created account '$name'. auth.json and session state are per-account (never shared, never copied)."
+  else
+    echo "Account '$name' already existed — repaired missing shared symlinks only (auth.json/session state untouched)."
+  fi
+  echo
+  echo "Next steps:"
+  echo "  1. One-off login for this account (does not touch primary or the active marker):"
+  echo "       CODEX_HOME=\"$acc_dir\" codex login"
+  echo "  2. Make it the active account for the codex() shell wrapper:"
+  echo "       codex-swap use $name"
+  echo "     Then open a NEW terminal/tab (or: exec zsh) — this is a cold switch, running"
+  echo "     codex sessions keep whatever account they started with."
+  echo
+  echo "Caveat: config.toml is shared by symlink. If it sets an ABSOLUTE sqlite_home or"
+  echo "log path, that storage would be shared too — keep such paths relative (the"
+  echo "default) so each account's session state actually stays separate."
+  exit 0
+}
+
+cmd_list() {
+  local as_json=no n ch mark login
+  case "${1:-}" in
+    --json) as_json=yes ;;
+    "") ;;
+    *) echo "usage: codex-swap list [--json]" >&2; exit 2 ;;
+  esac
+
+  local active; active="$(active_name)"
+
+  if [ "$as_json" = yes ]; then
+    printf '['
+    local first=1
+    while IFS= read -r n; do
+      [ -n "$n" ] || continue
+      ch="$(home_for "$n")"
+      login=false
+      [ -f "$ch/auth.json" ] && login=true
+      [ "$first" -eq 1 ] || printf ','
+      printf '{"name":"%s","codexHome":"%s","active":%s,"loggedIn":%s}' \
+        "$n" "$ch" "$([ "$n" = "$active" ] && echo true || echo false)" "$login"
+      first=0
+    done <<EOF
+$(all_account_names)
+EOF
+    printf ']\n'
+    exit 0
+  fi
+
+  printf '%-2s %-20s %-10s\n' "" "NAME" "STATE"
+  while IFS= read -r n; do
+    [ -n "$n" ] || continue
+    ch="$(home_for "$n")"
+    mark=" "
+    [ "$n" = "$active" ] && mark="*"
+    printf '%-2s %-20s %s\n' "$mark" "$n" "$(auth_status "$ch")"
+    printf '   %-20s %s\n' "" "$ch"
+  done <<EOF
+$(all_account_names)
+EOF
+  echo
+  echo "* = active for the codex() shell wrapper (cold switch — see 'codex-swap which')"
+  exit 0
+}
+
+cmd_use() {
+  local name="${1:-}"
+  [ -n "$name" ] || { echo "usage: codex-swap use <name|primary>" >&2; exit 2; }
+  if [ "$name" != "$PRIMARY_LABEL" ]; then
+    charset_ok "$name" || die "invalid name '$name'"
+    [ -d "$ACCOUNTS_ROOT/$name" ] || die "no such account '$name' (see: codex-swap list)"
+  fi
+
+  mkdir -p "$ACCOUNTS_ROOT" || die "could not create $ACCOUNTS_ROOT"
+  local tmp="$ACTIVE_FILE.tmp.$$"
+  if printf '%s\n' "$name" >"$tmp" 2>/dev/null && mv "$tmp" "$ACTIVE_FILE" 2>/dev/null; then
+    echo "Active account set to '$name' ($(home_for "$name"))."
+    echo "Cold switch: any ALREADY-RUNNING codex session keeps its old account until"
+    echo "restarted. Open a new terminal/tab (or: exec zsh) and start a fresh 'codex'."
+    exit 0
+  fi
+  rm -f "$tmp" 2>/dev/null
+  die "failed to write active marker $ACTIVE_FILE"
+}
+
+cmd_which() {
+  local n ch
+  n="$(active_name)"
+  ch="$(home_for "$n")"
+  echo "$n"
+  echo "  CODEX_HOME: $ch"
+  echo "  $(auth_status "$ch")"
+  exit 0
+}
+
+cmd_remove() {
+  local name="${1:-}" confirm_yes=no acc_dir reply
+  [ -n "$name" ] || { echo "usage: codex-swap remove <name> [--yes]" >&2; exit 2; }
+  shift 2>/dev/null || true
+  while [ $# -gt 0 ]; do
+    case "$1" in --yes|-y) confirm_yes=yes ;; esac
+    shift
+  done
+
+  [ "$name" != "$PRIMARY_LABEL" ] || die "refusing to remove '$PRIMARY_LABEL' (\$CODEX_HOME, $PRIMARY_HOME)"
+  charset_ok "$name" || die "invalid name '$name'"
+  acc_dir="$ACCOUNTS_ROOT/$name"
+  [ -d "$acc_dir" ] || die "no such account '$name' (see: codex-swap list)"
+  # Defense in depth: never rm -rf outside ACCOUNTS_ROOT even though the
+  # charset check above already makes escaping the directory impossible.
+  case "$acc_dir" in
+    "$ACCOUNTS_ROOT"/*) : ;;
+    *) die "refusing to remove path outside $ACCOUNTS_ROOT: $acc_dir" ;;
+  esac
+
+  if [ "$confirm_yes" != yes ]; then
+    if [ -t 0 ]; then
+      printf "This deletes %s — including its auth.json and session state. Type the account name to confirm: " "$acc_dir"
+      read -r reply
+      [ "$reply" = "$name" ] || die "confirmation did not match — aborted, nothing removed"
+    else
+      die "remove requires --yes when not run interactively"
+    fi
+  fi
+
+  rm -rf "$acc_dir" || die "failed to remove $acc_dir"
+  echo "Removed account '$name' ($acc_dir)."
+
+  if [ "$(active_name)" = "$name" ]; then
+    rm -f "$ACTIVE_FILE" 2>/dev/null
+    echo "It was the active account — active account reset to '$PRIMARY_LABEL'."
+    echo "Cold switch: restart running codex sessions to adopt this."
+  fi
+  exit 0
+}
+
+main() {
+  local sub="${1:-}"
+  [ $# -gt 0 ] && shift
+  case "$sub" in
+    add)    cmd_add "$@" ;;
+    list)   cmd_list "$@" ;;
+    use)    cmd_use "$@" ;;
+    which)  cmd_which "$@" ;;
+    remove) cmd_remove "$@" ;;
+    -h|--help|help|"") usage ;;
+    *)
+      # Bare account name convenience: `codex-swap work` == `codex-swap use work`.
+      if [ -d "$ACCOUNTS_ROOT/$sub" ]; then
+        cmd_use "$sub"
+      else
+        echo "codex-swap: unknown subcommand or account '$sub'" >&2; usage
+      fi ;;
+  esac
+}
+
+if [ "${BASH_SOURCE[0]:-}" = "$0" ]; then
+  main "$@"
+fi
