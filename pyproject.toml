@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "overcodex"
-version = "0.1.0"
+version = "0.1.1"
 description = "Codex CLI, overclocked — cold multi-account switching, context-threshold handoff, instrumented statusline, and AGENTS.md routing policy for multi-agent workflows"
 readme = "README.md"
 license = { text = "MIT" }
