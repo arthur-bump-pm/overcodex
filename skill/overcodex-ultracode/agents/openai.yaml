@@ -1,0 +1,6 @@
+interface:
+  display_name: "Overcodex UltraCode"
+  short_description: "Portable multi-agent engineering orchestration"
+  default_prompt: "Use $overcodex-ultracode to coordinate this complex engineering task with explicit scout, worker, reviewer, and judge roles."
+policy:
+  allow_implicit_invocation: true

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "overcodex"
-version = "0.1.1"
+version = "0.2.0"
 description = "Codex CLI, overclocked — cold multi-account switching, context-threshold handoff, instrumented statusline, and AGENTS.md routing policy for multi-agent workflows"
 readme = "README.md"
 license = { text = "MIT" }
@@ -40,9 +40,12 @@ packages = ["src/overcodex"]
 "config" = "overcodex/payload/config"
 "codex" = "overcodex/payload/codex"
 "prompts" = "overcodex/payload/prompts"
+"agents" = "overcodex/payload/agents"
 "shell" = "overcodex/payload/shell"
+"skill" = "overcodex/payload/skill"
 "install.sh" = "overcodex/payload/install.sh"
 "uninstall.sh" = "overcodex/payload/uninstall.sh"
+"install-openclaw.sh" = "overcodex/payload/install-openclaw.sh"
 
 # hatchling's default sdist build respects VCS-ignore files and otherwise
 # only guarantees the `src/` package tree; it does NOT guarantee the payload
@@ -60,9 +63,12 @@ include = [
     "/config",
     "/codex",
     "/prompts",
+    "/agents",
     "/shell",
+    "/skill",
     "/install.sh",
     "/uninstall.sh",
+    "/install-openclaw.sh",
     "/README.md",
     "/LICENSE",
     "/pyproject.toml",

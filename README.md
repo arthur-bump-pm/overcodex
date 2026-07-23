@@ -32,6 +32,12 @@ codex-swap work             # cold switch: writes auth.json, then restart codex
 
 Start a **new** Codex CLI session (hooks and AGENTS.md load at session start) and confirm the statusline shows the context/limit meters. Run `/prompts:handoff` inside Codex to hand off before you hit auto-compact.
 
+The same routing policy is packaged as a portable skill for OpenClaw. Install it from a packaged overcodex build with `openclaw skills install "$(overcodex skill-path)" --global`, then configure the four role agent IDs described in `skill/overcodex-ultracode/references/openclaw-adapter.md`.
+
+For agent-assisted setup, tell OpenClaw:
+
+> Install and activate Overcodex UltraCode. Run `curl -fsSL https://raw.githubusercontent.com/arthur-bump-pm/overcodex/main/install-openclaw.sh | bash`, verify it with `openclaw skills list` and `openclaw agents list`, then configure the scout, worker, reviewer, and judge roles. Do not change credentials or existing agent settings without showing me the proposed diff first.
+
 <details>
 <summary>Other install methods, requirements, upgrading</summary>
 
@@ -80,11 +86,23 @@ You lose the token bloat, not the thread. Combine with a `codex-swap` restart wh
 ### Statusline
 Codex's native statusline already covers the meters — run `/statusline` inside Codex and enable the context, five-hour, and weekly items (or set `tui.status_line` in config.toml yourself). The kit deliberately ships no statusline config: the native picker is authoritative, and the exact config-key vocabulary is undocumented — nothing to clobber, nothing to break.
 
-### AGENTS.md routing policy
-A policy block appended to `$CODEX_HOME/AGENTS.md` (loaded globally, then project `AGENTS.md` files concatenate root-down): bulk work rides cheap models/effort, verification rides a stronger reasoning tier, only final judgment spends the top tier. Routing table, hard floors, escalation rules included.
+### AGENTS.md routing policy + custom agents
+A policy block appended to `$CODEX_HOME/AGENTS.md` (loaded globally, then project `AGENTS.md` files concatenate root-down) tells Codex when to delegate and enforces read-parallel/write-serial coordination, verification floors, escalation, and final synthesis. Four custom-agent definitions under `$CODEX_HOME/agents/`, registered in `[agents]`, pin bulk scouting to Luna, implementation to Terra, review to Sol/high, and adjudication to Sol/xhigh. Routed dispatches use an explicit `agent_type` and `fork_turns = "none"`; a task name alone does not route models.
+
+For an explicit trigger inside Codex, run `/prompts:ultracode` and include the objective. For qualifying complex tasks, the global policy also defaults to delegation and requires the parent to explain any decision to stay serial.
+
+When Codex opens this GitHub checkout, the root `AGENTS.md` supplies the repository-local instruction layer. Prompt it with `Activate Overcodex UltraCode in this repository` to have it inspect the global marker and run `./install.sh` when activation is requested. For OpenClaw, prompt it to run `./install-openclaw.sh`; the portable `SKILL.md` then supplies the same orchestration policy.
+
+The detailed agent-facing activation contract is in [`AGENT-SETUP.md`](AGENT-SETUP.md). Short prompts are enough because the repository's `AGENTS.md` directs the agent to read that contract:
+
+**Codex:** `Activate Overcodex UltraCode for Codex from https://github.com/arthur-bump-pm/overcodex. Clone it if needed, follow AGENT-SETUP.md, preserve unrelated settings, verify the roles and smoke test, then report the restart step.`
+
+**OpenClaw:** `Activate Overcodex UltraCode for OpenClaw from https://github.com/arthur-bump-pm/overcodex. Clone it if needed, follow AGENT-SETUP.md, show configuration diffs before applying them, verify the skill and agents, then run a harmless scout check.`
+
+For full proactive orchestration, select a supported Codex reasoning effort in the model controls. GPT-5.5 supports `none`, `low`, `medium`, `high`, and `xhigh`; GPT-5.6 Sol/Terra/Luna also support `max`. The bundled judge uses portable `xhigh`; use `max` only for a GPT-5.6 quality-critical adjudication. `ultra` is not a Codex effort value. Installing Overcodex does not silently replace your existing model or effort preference.
 
 ### Hooks + prompts
-`PreToolUse`/`PostToolUse`/`SessionStart`/`Stop` hooks wired via an inline `[hooks]` table in `config.toml`, plus `/prompts:*` markdown prompts under `$CODEX_HOME/prompts/` (YAML frontmatter, `$1`-`$9` placeholders) for the handoff flow and other repeatable operations.
+`SessionStart`/`UserPromptSubmit`/`Stop`/`PreCompact` hooks wired via an inline `[hooks]` table in `config.toml`, plus `/prompts:*` markdown prompts under `$CODEX_HOME/prompts/` (YAML frontmatter, `$1`-`$9` placeholders) for the handoff flow and other repeatable operations.
 
 ## Cheat sheet
 
@@ -97,6 +115,8 @@ A policy block appended to `$CODEX_HOME/AGENTS.md` (loaded globally, then projec
 | `overcodex install` | (Re)install/refresh the kit — idempotent |
 | `overcodex uninstall` | Remove exactly what install added |
 | `overcodex path` | Print the bundled payload directory |
+| `overcodex skill-path` | Print the portable OpenClaw/Codex skill directory |
+| `install-openclaw.sh` | Install the packaged skill into OpenClaw |
 
 Or skip memorizing and **paste a prompt**:
 
@@ -137,8 +157,11 @@ flowchart TD
 | `bin/codex-swap` | `~/.local/bin/` | Cold account switcher: register, list, point `$CODEX_HOME` at an account |
 | `hooks/*.sh` | `$CODEX_HOME/hooks/` | SessionStart / UserPromptSubmit / Stop handlers |
 | `config/hooks-block.toml.tpl` | inline `[hooks]` table appended to `config.toml` (markers) | Hook wiring — only if no `hooks` key exists |
+| `config/agents-block.toml.tpl` | `[agents]` block appended to `config.toml` (markers) | Registers the four routed roles |
 | `codex/AGENTS-ULTRACODE.md` | appended to `$CODEX_HOME/AGENTS.md` (markers) | Model/effort routing policy |
 | `prompts/*.md` | `$CODEX_HOME/prompts/` | `/prompts:*` custom prompts (handoff, etc.) |
+| `agents/*.toml` | `$CODEX_HOME/agents/` | Pinned Luna/Terra/Sol custom subagent roles |
+| `skill/overcodex-ultracode/` | OpenClaw skill root (or packaged payload) | Portable policy, role prompts, and platform adapters |
 
 | `shell/zshrc-snippet.sh` | `~/.zshrc` (markers) | `codex-swap` PATH/alias wiring |
 
@@ -148,6 +171,7 @@ flowchart TD
 <summary>Maintainer workflow</summary>
 
 ```bash
+./tests/smoke.sh     # isolated install/hooks/reinstall/uninstall verification
 ./sync.sh            # live setup -> repo: scrub-gated diff, commit, push
 ./sync.sh --release  # + version bump + GitHub release -> PyPI (trusted publishing)
 ./sync.sh --dry-run  # preview either

@@ -1,7 +1,7 @@
 """overcodex CLI — runs the bundled kit installer/uninstaller.
 
 The package wheel carries the same payload a git clone has (bin/, hooks/,
-config/, codex/, prompts/, shell/, and the install/uninstall scripts). This
+config/, codex/, prompts/, agents/, shell/, and the install/uninstall scripts). This
 CLI just locates that payload and runs the battle-tested bash scripts
 against it.
 """
@@ -35,6 +35,7 @@ def main():
     sub.add_parser("install", help="install/refresh the kit into $CODEX_HOME (idempotent, backs everything up)")
     sub.add_parser("uninstall", help="remove exactly what install added")
     sub.add_parser("path", help="print the bundled payload directory")
+    sub.add_parser("skill-path", help="print the portable OpenClaw/Codex skill directory")
     sub.add_parser("version", help="print the overcodex version")
     args = ap.parse_args()
 
@@ -44,6 +45,12 @@ def main():
         sys.exit(_run_script("uninstall.sh"))
     if args.cmd == "path":
         print(_payload_dir())
+        return
+    if args.cmd == "skill-path":
+        path = os.path.join(_payload_dir(), "skill", "overcodex-ultracode")
+        if not os.path.isfile(os.path.join(path, "SKILL.md")):
+            sys.exit("overcodex: bundled portable skill is missing — reinstall the package")
+        print(path)
         return
     if args.cmd == "version":
         print(pkg_version("overcodex"))

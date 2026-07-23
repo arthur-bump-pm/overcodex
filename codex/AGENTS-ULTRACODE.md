@@ -1,54 +1,66 @@
 # --- overcodex ultracode (begin) ---
-# ULTRACODE.md — Model & Effort Routing for Codex (v2-codex, ported 2026-07 from the Claude Code ULTRACODE v2)
+# ULTRACODE - Codex multi-agent routing policy
 
-## 1. Core principle
-Spend the flagship tier only where judgment is the bottleneck, never where volume is. `model_reasoning_effort` and any per-role `model` override that you omit silently inherits the top-level `model` (currently `gpt-5.6-sol` — the flagship). Explicit down-routing is your default posture, not an optimization.
-Route each subagent/role by one question: "if this is quietly wrong, who catches it?" — a downstream check means you may downgrade; nobody means top tier.
+## When to delegate
+For a complex task with at least two independent, useful work streams, use subagents proactively by default. Good candidates are read-heavy exploration, independent verification, test/log analysis, and clearly partitioned implementation. A qualifying task should not remain entirely in the parent unless the parent records a concrete reason: no independent stream, unsafe shared writes, unavailable role/model, or coordination cost greater than the expected benefit. Do not spawn agents for a small task or work that is inherently sequential.
 
-## 2. Tier map (GPT-5.6 family, mid-2026)
-Codex's current lineup is three permanent price/capability tiers, not a Claude-style haiku/sonnet/opus/apex ladder — treat them as the equivalent rungs:
+At the start of every qualifying task, silently perform the UltraCode planning gate below, then tell the user the selected workstreams and roles before dispatching. The parent must either dispatch at least one useful subagent or state the exception that kept the work serial.
 
-| Rung | Codex tier | Claude-side equivalent | Use for |
-|---|---|---|---|
-| 1 (cheap/fast) | **Luna** | haiku | scouting, file listing, mechanical transforms, fixed-schema extraction |
-| 2 (mid) | **Terra** | sonnet | finder sweeps, well-scoped implementation edits, bulk reading of dense code |
-| 3 (flagship) | **Sol** | opus | security sweeps, cross-cutting edits, adversarial verification, judge panels, completeness critics |
-| 3 + effort ceiling | **Sol @ high** (or the Max reasoning-effort / Ultra sub-agent mode where the deployment exposes it) | fable/apex | terminal judge, final synthesis, subtle-correctness verdicts |
+Keep the main thread focused on requirements, decisions, and final synthesis. Give each subagent a bounded objective, scope, expected output, and verification standard. Wait for all required results before synthesizing.
 
-Effort is the second axis: `model_reasoning_effort = low \| medium \| high` (config.toml or `--config`). Pair rung × effort the same way ULTRACODE always has:
-- Rung 1 → low. Rung 2 → medium. Rung 3 → high. Terminal/apex → Sol @ high, plus Max/Ultra if the account has it — never below Sol.
-- Effort amplifies capability, it never substitutes: Luna@high loses to Terra@medium on judgment work. Never pair a high-effort setting with a fan-out stage.
+## Ultra planning gate
+Before spawning, write a short routing plan in the parent context:
 
-## 3. Routing surface (how to actually pin a tier per subagent)
-Codex's per-subagent override surface is younger than Claude Code's Task-tool `model` param — there is no first-class "one dispatch call, one model" primitive yet. Use what exists, and state the gap honestly where it doesn't:
-- **`[agents]` table (`AgentRoleToml` per role)** in config.toml — the closest analog to Claude's per-agent `model`. Give each role you define (scout, finder, verifier, judge) its own `model` + `model_reasoning_effort` entry. This is the primary lever; use it whenever the orchestrator supports role-scoped agents.
-- **`profiles`** (`codex --profile <name>`) — a named bundle of `model` + `model_reasoning_effort` (+ sandbox/approval settings). Define one profile per rung (e.g. `scout`, `implement`, `verify`, `apex`) and invoke the right profile per stage instead of editing global config mid-session.
-- **`orchestrator.max_threads` / `max_depth`** — the fan-out width and recursion-depth knobs. Set `max_threads` to match the routing-lint width rule below (wide stages get width, not tier); use `max_depth` to cap runaway recursive sub-agent spawning, which is the Codex-side proxy for "never two agents editing the same files."
-- **Where enforcement is weak** (no live per-call model override mid-session, no schema-typed subagent handoff): the orchestrating model itself must apply the routing table by discipline — choosing the right profile/role before dispatch — because the harness will not silently downgrade or refuse an unrouted call the way a stricter per-call API might. Say so in-session rather than assuming the harness caught it.
+1. Decompose the request into atomic workstreams and identify dependencies.
+2. Classify each stream as `inventory`, `mechanical`, `implementation`, `debugging`, `security`, `architecture`, or `adjudication`.
+3. Score each stream for ambiguity, blast radius, reversibility, and verification difficulty (low/medium/high).
+4. Select the lowest-cost model that meets the task's verification floor. Model choice must be justified by task fit, not by a generic preference for the strongest model.
+5. State ownership, allowed paths, expected artifact, test command, and escalation trigger for every dispatch.
 
-## 4. Hard guardrails (unchanged from v2, ported verbatim)
-Never downgrade below floor:
-- Final synthesis and any output the user sees with no downstream check: Sol, never below. Terminal stage = apex profile, or Sol@high with Max/Ultra if available.
-- Adversarial verification, judge panels, security verdicts, completeness critics: Sol floor. A false CONFIRM ends scrutiny.
-- Subtle-correctness verdicts (concurrency, auth/crypto, money math, migrations): apex — "looks correct" and "is correct" diverge most here.
+Routing guidance:
 
-Verification order: where an OBJECTIVE check exists (tests, typecheck, lint, a numeric answer), gate on it via `codex exec` + shell BEFORE spending an LLM verifier. A passing test outranks an LLM CONFIRM. For fuzzy deliverables with no automatic check, buy a stronger generator, not a weak-generator-plus-judge pipeline.
+| Task shape | Default model | Upgrade when |
+|---|---|---|
+| Inventory, search, schema extraction | `scout-luna-low` | the result is ambiguous or security-relevant |
+| Mechanical, bounded implementation | `worker-terra-medium` | the change crosses shared contracts or tests are weak |
+| Debugging with a reproducible failure | `worker-terra-medium` then `reviewer-sol-high` | the cause is nondeterministic or high blast radius |
+| Security, auth, concurrency, migrations, destructive operations | `reviewer-sol-high` | evidence conflicts or the decision is subtle |
+| Architecture tradeoff or disputed review | `judge-sol-xhigh` | only after independent evidence exists |
 
-Escalation rule: every finder/verifier role emits `verdict`/`confidence`/`evidence` (approximate via prompt contract — Codex has no first-class typed `schema` param yet, so state the required shape in the prompt and treat a response missing any field as low confidence). Re-run once at the next rung up on confidence < 0.7, UNSURE, empty/malformed output, or contradiction between parallel roles. Escalation target must be ≥ generator's rung. Escalation has a ceiling too: >1-in-4 downgraded stages escalating means the routing was miscalibrated — stop and re-profile, don't silently run everything on Sol.
+Do not use `judge-sol-xhigh` as a default worker. Do not send implementation to a read-only role. If no role meets the floor, stop and say what capability or model is missing rather than silently downgrading.
 
-Panels: 2–3 voters with distinct lenses (correctness / security / reproduces-it), never N identical-role repeats. Unanimous → accept; split → one apex adjudicator; never majority-vote or average.
+## Installed roles
+Use these exact Codex custom-agent types when their role fits:
 
-Budget pressure: cut `max_threads` / batch more files per role first; floors are the last thing to fall. Treat the apex rung as a read-only reserve (usually synthesis only). If budget can't cover the apex/Sol terminal stages, say so and propose the cut — never silently ship a downgraded final answer.
+| Agent | Model / effort | Use for |
+|---|---|---|
+| `scout-luna-low` | Luna / low | File discovery, mechanical inventory, fixed-schema extraction |
+| `worker-terra-medium` | Terra / medium | Well-scoped implementation with explicit ownership |
+| `reviewer-sol-high` | Sol / high | Independent correctness, security, regression, and test review |
+| `judge-sol-xhigh` | Sol / xhigh | Contradiction resolution and subtle terminal verdicts |
 
-## 5. Routing lint (pre-flight, fix before dispatch)
-1. Every role/profile has an explicit `model` + `model_reasoning_effort`, or the omission is a deliberate apex spend (inherits top-level `model`). More than 2 omissions = under-routing.
-2. No wide/parallel role runs on Sol@high or inherits the apex profile; bulk roles sit at Luna/Terra regardless of the rest of the routing.
-3. Verifiers, judges, synthesis are at their floors even under budget pressure; `max_depth` prevents two roles editing the same files concurrently.
-4. Every downgraded trusted-adjacent stage has a stated escalation trigger, and an objective check (test/lint/typecheck via shell) gates before any LLM verifier where one exists.
-5. Every role's prompt states an objective + expected output shape + scope boundary vs sibling roles — Codex has no schema enforcement, so the prompt IS the contract.
-6. A stage is justified only if it accesses information the prior stage couldn't (new tool call, test run, independent read). A stage that reformats an upstream conclusion is overhead — collapse it into one higher-effort call.
-7. Profile/role names embed the tier (e.g. `verify-sol-high`), so a session log shows the routing without opening config.toml.
+Codex effort compatibility is model-specific. GPT-5.5 supports `none`, `low`, `medium`, `high`, and `xhigh`. GPT-5.6 Sol/Terra/Luna additionally support `max`. Keep `xhigh` as the portable judge default; select `max` only for a GPT-5.6 task whose quality requirement justifies extra cost and latency. Never write `ultra` as a Codex `model_reasoning_effort` value.
 
-## 6. Scope
-This table binds any one-off `codex exec` dispatch too, not just multi-agent orchestrator runs: a lone bulk-reading call is still a Luna/Terra job; a lone terminal judgment still earns Sol@high or a deliberate apex inheritance. Absence of `[agents]`/`orchestrator` config does not relax the discipline — apply it by hand via `--profile` and `--config model_reasoning_effort=`.
+Use the parent Sol session for final synthesis. A high or xhigh parent effort may orchestrate proactively, but it does not remove the need for explicit role and scope selection.
+
+When dispatching one of these roles, the `spawn_agent` call MUST set `agent_type` to the exact name above and `fork_turns` to `"none"`. Put all required task context in the child message. `task_name` is only a label and does not select a model; omitting `agent_type` silently inherits the parent model, while a full-history fork rejects role/model overrides.
+
+## Coordination rules
+- Read-heavy work may run in parallel. Write-heavy work is serial by default.
+- Never let two agents edit the same files concurrently. If parallel writes are justified, partition ownership by non-overlapping paths and say so in every worker prompt.
+- Run objective checks such as tests, typecheck, lint, or numeric validation before spending a reviewer agent. A passing deterministic check outranks an LLM opinion.
+- Verification must be independent: give the reviewer the artifact, requirements, and evidence, not the generator's conclusion.
+- Every reviewer returns `verdict`, `confidence`, and `evidence`. Missing fields, confidence below 0.7, `UNSURE`, or contradictory results trigger one escalation to the next stronger role.
+- Use panels only for high-risk fuzzy judgments. Give 2-3 reviewers distinct lenses; unanimous results may pass, while a split goes to `judge-sol-xhigh` rather than majority vote.
+- Stop escalating when more than one quarter of downgraded stages require escalation. Re-plan the routing instead of silently moving every task to Sol.
+- Reduce fan-out before lowering verification quality. The default `agents.max_depth = 1` is appropriate unless the user explicitly requests recursive delegation.
+
+## Floors
+- User-visible final synthesis with no downstream check: parent Sol session.
+- Security, auth, concurrency, money math, destructive operations, and migrations: `reviewer-sol-high` minimum.
+- A subtle disputed verdict: `judge-sol-xhigh`.
+- Bulk or repetitive work stays on Luna or Terra even when the parent runs at high or xhigh effort.
+
+## Dispatch lint
+Before spawning, confirm that each agent adds new information or independent verification; has an objective, path or topic boundary, and output contract; uses the lowest role that meets its floor; and cannot race another writer. If those conditions are not met, keep the work in the main thread.
 # --- overcodex ultracode (end) ---

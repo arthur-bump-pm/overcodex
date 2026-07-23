@@ -25,6 +25,8 @@ ZSH_BEGIN='# --- overcodex integration (begin) ---'
 ZSH_END='# --- overcodex integration (end) ---'
 HOOKS_BEGIN='# --- overcodex hooks (begin) ---'
 HOOKS_END='# --- overcodex hooks (end) ---'
+AGENT_ROLES_BEGIN='# --- overcodex agent roles (begin) ---'
+AGENT_ROLES_END='# --- overcodex agent roles (end) ---'
 SL_BEGIN='# --- overcodex statusline (begin) ---'
 SL_END='# --- overcodex statusline (end) ---'
 
@@ -107,23 +109,35 @@ for p in "$SCRIPT_DIR"/prompts/*.md; do
   fi
 done
 
+# Custom agent definitions (by the names shipped in the kit).
+for a in "$SCRIPT_DIR"/agents/*.toml; do
+  [ -f "$a" ] || continue
+  dest="$CODEX_HOME/agents/$(basename "$a")"
+  if [ -f "$dest" ]; then
+    rm -f "$dest" && note_did "removed $dest" || note_warn "could not remove $dest"
+  else
+    note_skip "not present: $dest"
+  fi
+done
+
 # Prune now-empty kit dirs (never touch anything non-empty).
-for d in "$CODEX_HOME/hooks" "$CODEX_HOME/prompts"; do
+for d in "$CODEX_HOME/hooks" "$CODEX_HOME/prompts" "$CODEX_HOME/agents"; do
   [ -d "$d" ] && rmdir "$d" 2>/dev/null && note_did "removed empty dir $d"
 done
 echo
 
 # ---------------------------------------------------------------------------
-# 2. config.toml — remove ONLY our marker blocks (hooks + status_line).
+# 2. config.toml — remove ONLY our marker blocks (hooks + agent roles + status_line).
 # ---------------------------------------------------------------------------
 echo "-- config.toml --"
 if [ ! -f "$CONFIG_TOML" ]; then
   note_skip "no config.toml"
 else
-  HAS_HOOKS=no; HAS_SL=no
+  HAS_HOOKS=no; HAS_AGENT_ROLES=no; HAS_SL=no
   grep -qF "$HOOKS_BEGIN" "$CONFIG_TOML" && HAS_HOOKS=yes
+  grep -qF "$AGENT_ROLES_BEGIN" "$CONFIG_TOML" && HAS_AGENT_ROLES=yes
   grep -qF "$SL_BEGIN"    "$CONFIG_TOML" && HAS_SL=yes
-  if [ "$HAS_HOOKS" = no ] && [ "$HAS_SL" = no ]; then
+  if [ "$HAS_HOOKS" = no ] && [ "$HAS_AGENT_ROLES" = no ] && [ "$HAS_SL" = no ]; then
     note_skip "config.toml has no overcodex blocks (no change)"
   else
     b=$(backup_file "$CONFIG_TOML")
@@ -133,12 +147,17 @@ else
       strip_block "$tmp" "$HOOKS_BEGIN" "$HOOKS_END" > "$tmp.2" && mv "$tmp.2" "$tmp" \
         || die "could not strip hooks block"
     fi
+    if [ "$HAS_AGENT_ROLES" = yes ]; then
+      strip_block "$tmp" "$AGENT_ROLES_BEGIN" "$AGENT_ROLES_END" > "$tmp.2" && mv "$tmp.2" "$tmp" \
+        || die "could not strip agent roles block"
+    fi
     if [ "$HAS_SL" = yes ]; then
       strip_block "$tmp" "$SL_BEGIN" "$SL_END" > "$tmp.2" && mv "$tmp.2" "$tmp" \
         || die "could not strip status_line block"
     fi
     mv "$tmp" "$CONFIG_TOML" || die "could not write $CONFIG_TOML"
     [ "$HAS_HOOKS" = yes ] && note_did "removed hooks block from config.toml (backup: $b)"
+    [ "$HAS_AGENT_ROLES" = yes ] && note_did "removed custom agent roles block from config.toml (backup: $b)"
     [ "$HAS_SL" = yes ]    && note_did "removed [tui].status_line block from config.toml (backup: $b)"
   fi
 fi

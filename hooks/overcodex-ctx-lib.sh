@@ -24,12 +24,10 @@
 #              "last_token_usage":{...},
 #              "model_context_window":W},
 #      "rate_limits":{...}}}
-# total_tokens / model_context_window * 100, taken from the LAST such line, is
-# used as the context-usage percentage everywhere below. This is a real
-# measurement (not a heuristic) but its recency depends on how often Codex
-# emits token_count events — needs live-session validation (see hooks-test
-# notes) to confirm the cadence is tight enough for the 60/75/85 thresholds to
-# feel timely rather than lagging.
+# last_token_usage.total_tokens / model_context_window * 100, taken from the
+# LAST such line, is used as the context-usage percentage everywhere below.
+# `total_token_usage` is cumulative billing usage across turns and can exceed
+# the context window many times over, so it must never drive these thresholds.
 #
 # Contract: ctx_pct_from_transcript prints an integer 0-100 on stdout and
 # returns 0 on success; on ANY failure (no file, no jq, malformed, division by
@@ -55,7 +53,7 @@ ctx_pct_from_transcript() {
     fi
     [ -n "$line" ] || return 1
 
-    total="$(printf '%s' "$line" | jq -r '.payload.info.total_token_usage.total_tokens // empty' 2>/dev/null)"
+    total="$(printf '%s' "$line" | jq -r '.payload.info.last_token_usage.total_tokens // empty' 2>/dev/null)"
     window="$(printf '%s' "$line" | jq -r '.payload.info.model_context_window // empty' 2>/dev/null)"
     [ -n "$total" ] && [ -n "$window" ] || return 1
     case "$total" in ''|*[!0-9]*) return 1 ;; esac
