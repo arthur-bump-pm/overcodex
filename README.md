@@ -99,6 +99,8 @@ The detailed agent-facing activation contract is in [`AGENT-SETUP.md`](AGENT-SET
 
 **OpenClaw:** `Activate Overcodex UltraCode for OpenClaw from https://github.com/arthur-bump-pm/overcodex. Clone it if needed, follow AGENT-SETUP.md, show configuration diffs before applying them, verify the skill and agents, then run a harmless scout check.`
 
+The complete copy-paste versions are in [`overcodex-instructions.md`](overcodex-instructions.md).
+
 For full proactive orchestration, select a supported Codex reasoning effort in the model controls. GPT-5.5 supports `none`, `low`, `medium`, `high`, and `xhigh`; GPT-5.6 Sol/Terra/Luna also support `max`. The bundled judge uses portable `xhigh`; use `max` only for a GPT-5.6 quality-critical adjudication. `ultra` is not a Codex effort value. Installing Overcodex does not silently replace your existing model or effort preference.
 
 ### Hooks + prompts
