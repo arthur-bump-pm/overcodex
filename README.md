@@ -10,8 +10,7 @@
 codex-swap work         # register/list accounts, then switch — restart required
 /prompts:handoff        # package this session's state, resume fresh next launch
 
-ctx [████░░░░░░] 42% remaining | 5h limit 71% | weekly limit 18%
-└ get_context_remaining      └ native Codex statusline items
+native footer: model with reasoning | current directory | project name | context remaining | 5h limit | weekly limit
 ```
 
 ## Install
@@ -30,7 +29,7 @@ codex-swap add personal    # then log in to each: CODEX_HOME=~/.codex-accounts/w
 codex-swap work             # cold switch: writes auth.json, then restart codex
 ```
 
-Start a **new** Codex CLI session (hooks and AGENTS.md load at session start) and confirm the statusline shows the context/limit meters. Run `/prompts:handoff` inside Codex to hand off before you hit auto-compact.
+Start a **new** Codex CLI session (hooks and AGENTS.md load at session start) and confirm its native footer shows the configured fields; Codex may omit unavailable usage-limit fields. Run `/prompts:handoff` inside Codex to hand off before you hit auto-compact.
 
 The same routing policy is packaged as a portable skill for OpenClaw. Install it from a packaged overcodex build with `openclaw skills install "$(overcodex skill-path)" --global`, then configure the four role agent IDs described in `skill/overcodex-ultracode/references/openclaw-adapter.md`.
 
@@ -72,7 +71,7 @@ Each account gets its own isolated `CODEX_HOME` (a separate `auth.json`, never a
 
 ```mermaid
 flowchart LR
-    A[Context fills up] --> B[get_context_remaining / statusline flags it]
+    A[Context fills up] --> B[Native footer shows context remaining]
     B --> C[You run /prompts:handoff]
     C --> D[Codex packages goals, state, next steps]
     D --> E[Session ends]
@@ -84,7 +83,9 @@ flowchart LR
 You lose the token bloat, not the thread. Combine with a `codex-swap` restart when you're also switching accounts.
 
 ### Statusline
-Codex's native statusline already covers the meters — run `/statusline` inside Codex and enable the context, five-hour, and weekly items (or set `tui.status_line` in config.toml yourself). The kit deliberately ships no statusline config: the native picker is authoritative, and the exact config-key vocabulary is undocumented — nothing to clobber, nothing to break.
+The kit ships conservative defaults for Codex's native footer, in this order: `model-with-reasoning`, `current-dir`, `project-name`, `context-remaining`, `five-hour-limit`, and `weekly-limit`, with colors enabled. Codex renders these native fields and may omit usage-limit fields that are unavailable. Installation adds the defaults only when you do not already have `tui.status_line`; an existing user setting is preserved. Start a new Codex CLI session after installation for the footer to reload.
+
+OverCodex hooks use rollout data separately to issue handoff warnings as context fills. They cannot inject a custom statusline command or replace Codex's native footer.
 
 ### AGENTS.md routing policy + custom agents
 A policy block appended to `$CODEX_HOME/AGENTS.md` (loaded globally, then project `AGENTS.md` files concatenate root-down) tells Codex when to delegate and enforces read-parallel/write-serial coordination, verification floors, escalation, and final synthesis. Four custom-agent definitions under `$CODEX_HOME/agents/`, registered in `[agents]`, pin bulk scouting to Luna, implementation to Terra, review to Sol/high, and adjudication to Sol/xhigh. Routed dispatches use an explicit `agent_type` and `fork_turns = "none"`; a task name alone does not route models.
@@ -137,7 +138,9 @@ flowchart TD
     HK --> PR[/prompts:handoff and friends]
     PR --> CS[codex-swap: isolated CODEX_HOME per account]
     CS --> RS[Cold restart adopts the new account]
-    SL[Statusline: get_context_remaining + native limit items] --> HK
+    SL[Native footer: context-remaining + available usage limits] --> PR
+    HK --> RW[Hooks read rollout data for handoff warnings]
+    RW --> PR
 ```
 
 <details>

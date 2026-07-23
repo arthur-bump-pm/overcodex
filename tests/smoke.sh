@@ -8,6 +8,8 @@ grep -q 'UltraCode planning gate' "$ROOT/AGENTS.md"
 test -f "$ROOT/AGENT-SETUP.md"
 grep -q '## Codex' "$ROOT/AGENT-SETUP.md"
 grep -q '## OpenClaw' "$ROOT/AGENT-SETUP.md"
+! grep -q 'get_context_remaining' "$ROOT/README.md"
+grep -q 'context-remaining' "$ROOT/README.md"
 T=$(mktemp -d "${TMPDIR:-/tmp}/overcodex-smoke.XXXXXX")
 trap 'rm -rf "$T"' EXIT HUP INT TERM
 
@@ -26,6 +28,15 @@ assert set(config["hooks"]) == {"SessionStart", "UserPromptSubmit", "Stop", "Pre
 assert config["model_reasoning_effort"] in {"none", "low", "medium", "high", "xhigh", "max"}
 assert {"scout-luna-low", "worker-terra-medium", "reviewer-sol-high", "judge-sol-xhigh"}.issubset(config["agents"])
 assert config["agents"]["scout-luna-low"]["config_file"].endswith("/agents/scout-luna-low.toml")
+assert config["tui"]["status_line"] == [
+    "model-with-reasoning",
+    "current-dir",
+    "project-name",
+    "context-remaining",
+    "five-hour-limit",
+    "weekly-limit",
+]
+assert config["tui"]["status_line_use_colors"] is True
 PY
 
 for name in scout-luna-low worker-terra-medium reviewer-sol-high judge-sol-xhigh; do
@@ -63,6 +74,43 @@ sed -i '' 's/# ULTRACODE - Codex multi-agent routing policy/# stale policy/' "$C
 bash "$ROOT/install.sh" > "$T/install-3.log" 2>&1
 grep -q 'refreshed overcodex ultracode block' "$T/install-3.log"
 grep -q '^# ULTRACODE - Codex multi-agent routing policy$' "$CODEX_HOME/AGENTS.md"
+
+# A user-selected native status line remains untouched on a separate isolated install.
+PRESERVE_HOME="$T/preserve-home"
+PRESERVE_CODEX_HOME="$PRESERVE_HOME/.codex"
+mkdir -p "$PRESERVE_CODEX_HOME"
+printf '%s\n' '[tui]' 'status_line = ["model-with-reasoning", "current-dir"]' > "$PRESERVE_CODEX_HOME/config.toml"
+HOME="$PRESERVE_HOME" CODEX_HOME="$PRESERVE_CODEX_HOME" PATH="$PRESERVE_HOME/.local/bin:$PATH" \
+  bash "$ROOT/install.sh" > "$T/install-preserve-statusline.log" 2>&1
+python3 - "$PRESERVE_CODEX_HOME/config.toml" <<'PY'
+import sys, tomllib
+with open(sys.argv[1], "rb") as f:
+    config = tomllib.load(f)
+assert config["tui"]["status_line"] == ["model-with-reasoning", "current-dir"]
+assert "status_line_use_colors" not in config["tui"]
+PY
+
+# A color preference without a status line remains intact while defaults add the line.
+COLOR_ONLY_HOME="$T/color-only-home"
+COLOR_ONLY_CODEX_HOME="$COLOR_ONLY_HOME/.codex"
+mkdir -p "$COLOR_ONLY_CODEX_HOME"
+printf '%s\n' '[tui]' 'status_line_use_colors = false' > "$COLOR_ONLY_CODEX_HOME/config.toml"
+HOME="$COLOR_ONLY_HOME" CODEX_HOME="$COLOR_ONLY_CODEX_HOME" PATH="$COLOR_ONLY_HOME/.local/bin:$PATH" \
+  bash "$ROOT/install.sh" > "$T/install-color-only-statusline.log" 2>&1
+python3 - "$COLOR_ONLY_CODEX_HOME/config.toml" <<'PY'
+import sys, tomllib
+with open(sys.argv[1], "rb") as f:
+    config = tomllib.load(f)
+assert config["tui"]["status_line"] == [
+    "model-with-reasoning",
+    "current-dir",
+    "project-name",
+    "context-remaining",
+    "five-hour-limit",
+    "weekly-limit",
+]
+assert config["tui"]["status_line_use_colors"] is False
+PY
 
 bash "$ROOT/uninstall.sh" > "$T/uninstall.log" 2>&1
 for name in scout-luna-low worker-terra-medium reviewer-sol-high judge-sol-xhigh; do

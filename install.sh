@@ -201,7 +201,7 @@ echo
 # ---------------------------------------------------------------------------
 echo "-- config.toml --"
 
-# toml_present <config> -> prints hooks/agents/sl presence
+# toml_present <config> -> prints hooks/agents/status_line/status_line_use_colors presence
 # on stdout. Exits 3 on a parse error (caller then leaves the file untouched).
 toml_present() {
   tp_cfg="$1"
@@ -222,6 +222,7 @@ tui = tui if isinstance(tui, dict) else {}
 print("hooks=%s" % ("present" if "hooks" in d else "absent"))
 print("agents=%s" % ("present" if "agents" in d else "absent"))
 print("sl=%s" % ("present" if "status_line" in tui else "absent"))
+print("sl_colors=%s" % ("present" if "status_line_use_colors" in tui else "absent"))
 PY
     return $?
   fi
@@ -233,8 +234,10 @@ PY
       echo "agents=present"; else echo "agents=absent"; fi
     if grep -Eq '^[[:space:]]*status_line[[:space:]]*=' "$tp_cfg"; then
       echo "sl=present"; else echo "sl=absent"; fi
+    if grep -Eq '^[[:space:]]*status_line_use_colors[[:space:]]*=' "$tp_cfg"; then
+      echo "sl_colors=present"; else echo "sl_colors=absent"; fi
   else
-    echo "hooks=absent"; echo "agents=absent"; echo "sl=absent"
+    echo "hooks=absent"; echo "agents=absent"; echo "sl=absent"; echo "sl_colors=absent"
   fi
   return 0
 }
@@ -251,6 +254,7 @@ if [ "$CFG_OK" = 1 ]; then
   HOOKS_STATE=$(printf '%s\n' "$DET" | sed -n 's/^hooks=//p')
   AGENTS_STATE=$(printf '%s\n' "$DET" | sed -n 's/^agents=//p')
   SL_STATE=$(printf '%s\n' "$DET" | sed -n 's/^sl=//p')
+  SL_COLORS_STATE=$(printf '%s\n' "$DET" | sed -n 's/^sl_colors=//p')
 
   NEED_HOOKS=0
   [ "$HOOKS_STATE" = absent ] && NEED_HOOKS=1
@@ -334,14 +338,15 @@ if [ "$CFG_OK" = 1 ]; then
 
     # status_line: insert our keys just after an existing [tui] header, else
     # append a fresh [tui] table at EOF. Fragment header/comment/blank lines are
-    # dropped so only the key lines land inside our markers.
+    # dropped so only missing key lines land inside our markers.
     if [ "$NEED_SL" = 1 ]; then
       TMP2="$CONFIG_TOML.tmp2-$EPOCH"
-      awk -v sb="$SL_BEGIN" -v se="$SL_END" -v kf="$SRC_STATUSLINE" '
+      awk -v sb="$SL_BEGIN" -v se="$SL_END" -v kf="$SRC_STATUSLINE" -v skip_colors="$SL_COLORS_STATE" '
         function emitkeys(   line) {
           while ((getline line < kf) > 0) {
             if (line == "" || line == "[tui]") continue
             if (line ~ /^[ \t]*#/) continue
+            if (skip_colors == "present" && line ~ /^[ \t]*status_line_use_colors[ \t]*=/) continue
             print line
           }
           close(kf)
