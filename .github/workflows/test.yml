@@ -1,0 +1,64 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call: {}
+
+jobs:
+  test:
+    name: shellcheck + test suite + payload check (macOS)
+    runs-on: macos-latest
+    # A stuck/queued macOS job fails cleanly instead of hanging the publish.
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The suite and the config.toml editor need tomllib; the runner's
+      # /usr/bin/python3 (3.9) has none. tests/lib.sh picks python3.12 up even
+      # with /bin:/usr/bin first on PATH.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tooling
+        run: |
+          command -v jq >/dev/null || brew install jq
+          command -v shellcheck >/dev/null || brew install shellcheck
+          python3 -m pip install --quiet build
+
+      - name: shellcheck (errors)
+        run: |
+          shellcheck -S error bin/codex-swap hooks/*.sh install.sh uninstall.sh install-openclaw.sh \
+            sync.sh scrub.sh shell/zshrc-snippet.sh tests/*.sh
+
+      # No Codex CLI on the runner: test_codex_live.sh skips itself.
+      - name: Test suite (macOS /bin/bash 3.2 — what users' `env bash` usually resolves to)
+        run: PATH=/bin:/usr/bin:$PATH OVERCODEX_TEST_PYTHON="$(command -v python3)" OVERCODEX_REQUIRE_WHEEL=1 /bin/bash tests/run.sh
+
+      - name: Test suite (bash 5)
+        run: |
+          command -v brew >/dev/null && { brew list bash >/dev/null 2>&1 || brew install bash; }
+          B5="$(brew --prefix)/bin/bash"
+          "$B5" --version | head -n 1
+          OVERCODEX_TEST_PYTHON="$(command -v python3)" OVERCODEX_REQUIRE_WHEEL=1 "$B5" tests/run.sh
+
+      - name: Wheel carries the full payload
+        run: |
+          python3 -m build --wheel --outdir dist/ >/dev/null
+          whl=$(ls dist/*.whl)
+          for f in install.sh uninstall.sh install-openclaw.sh lib/overcodex_config.py bin/codex-swap \
+                   hooks/overcodex-handoff-inject.sh hooks/overcodex-ctx-watch.sh hooks/overcodex-ctx-lib.sh \
+                   hooks/overcodex-notify.sh hooks/overcodex-precompact-offer.sh \
+                   skills/handoff/SKILL.md skills/handoff-status/SKILL.md skills/handoff-cancel/SKILL.md \
+                   skills/handoff-claude/SKILL.md skills/ultracode/SKILL.md \
+                   config/hooks-block.toml.tpl config/agents-block.toml.tpl config/statusline.toml \
+                   codex/AGENTS-ULTRACODE.md shell/zshrc-snippet.sh skill/overcodex-ultracode/SKILL.md \
+                   agents/judge-sol-xhigh.toml; do
+            unzip -l "$whl" | grep -q "overcodex/payload/$f" || { echo "payload missing: $f"; exit 1; }
+          done
+          if unzip -l "$whl" | grep -q "overcodex/payload/prompts/"; then echo "legacy prompts/ in payload"; exit 1; fi
+          echo "payload complete"

@@ -9,11 +9,13 @@ Canonical repository: `https://github.com/arthur-bump-pm/overcodex`
 When the user requests Codex activation:
 
 1. Inspect the checkout and preserve unrelated changes.
-2. Run `pipx install git+https://github.com/arthur-bump-pm/overcodex.git` when `overcodex` is missing, then run `overcodex install`.
-3. Verify the `overcodex ultracode` marker in `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`.
+2. Run `pipx install git+https://github.com/arthur-bump-pm/overcodex.git` when `overcodex` is missing, then run `overcodex install` (it passes its own Python, so the config.toml editor always has a TOML validator; a bare `./install.sh` on stock macOS Python 3.9 without `tomli` leaves `config.toml` untouched and says so).
+3. Verify the `overcodex ultracode` marker in `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`, the five skills under `${CODEX_HOME:-$HOME/.codex}/skills/` (`handoff`, `handoff-status`, `handoff-cancel`, `handoff-claude`, `ultracode`), and the installer's `[ok] ... hook registered` lines.
 4. Verify the four registered roles and their Codex efforts: Luna/low, Terra/medium, Sol/high, Sol/xhigh.
-5. Preserve unrelated `AGENTS.md` and `config.toml` content; do not touch credentials.
-6. Run `./tests/smoke.sh` and report whether Codex must restart.
+5. Preserve unrelated `AGENTS.md` and `config.toml` content; do not touch credentials. Settings Codex wrote inside overcodex's marker blocks (hook trust, `[notice]`, `[features]`) are moved below the blocks by the installer, never deleted.
+6. Run `./tests/run.sh` (from a checkout) and report the restart step.
+7. Tell the user the one manual step that cannot be automated: Codex runs hooks only after the user trusts them. On the next `codex` start, Codex shows "Hooks need review" — choose "Trust all and continue" (or inspect with `/hooks`). Trust is keyed by config path, so it is needed once in every codex-swap account (`~/.codex-accounts/<name>`), and again whenever an upgrade changes a hook. `overcodex doctor` shows the trust status per account.
+8. In Codex 0.158+ the handoff flow is a skill: the user types `$handoff` (or picks it from `/skills`). Do not tell users to run `/prompts:handoff` — Codex 0.158 removed custom prompts.
 
 ## OpenClaw
 

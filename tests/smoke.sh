@@ -3,6 +3,17 @@
 set -eu
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# A python3 with tomllib/tomli (stock macOS /usr/bin/python3 3.9 has neither);
+# exported so install.sh uses it exactly as `overcodex install` passes its own.
+PY=""
+for c in "${OVERCODEX_TEST_PYTHON:-}" python3.14 python3.13 python3.12 python3.11 python3 /usr/bin/python3; do
+  [ -n "$c" ] || continue
+  command -v "$c" >/dev/null 2>&1 || continue
+  if "$c" "$ROOT/lib/overcodex_config.py" check >/dev/null 2>&1; then PY="$c"; break; fi
+done
+[ -n "$PY" ] || { echo "smoke: no python3 with tomllib/tomli" >&2; exit 1; }
+export OVERCODEX_PYTHON="$PY"
+python3() { "$PY" "$@"; }
 test -f "$ROOT/AGENTS.md"
 grep -q 'UltraCode planning gate' "$ROOT/AGENTS.md"
 test -f "$ROOT/AGENT-SETUP.md"
@@ -21,11 +32,17 @@ printf 'model = "gpt-5.6-sol"\nmodel_reasoning_effort = "high"\n' > "$CODEX_HOME
 
 bash "$ROOT/install.sh" > "$T/install-1.log" 2>&1
 python3 - "$CODEX_HOME/config.toml" <<'PY'
-import sys, tomllib
+import sys
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
 with open(sys.argv[1], "rb") as f:
     config = tomllib.load(f)
-assert set(config["hooks"]) == {"SessionStart", "UserPromptSubmit", "Stop", "PreCompact"}
-assert config["model_reasoning_effort"] in {"none", "low", "medium", "high", "xhigh", "max"}
+assert set(config["hooks"]) - {"state"} == {"SessionStart", "UserPromptSubmit", "Stop", "PreCompact"}
+assert config["hooks"]["SessionStart"][0]["matcher"] == "startup"
+assert config["hooks"]["SessionStart"][0]["hooks"][0]["additionalContextLimit"] == 8000
+assert config["model_reasoning_effort"] in {"low", "medium", "high", "xhigh", "max", "ultra"}
 assert {"scout-luna-low", "worker-terra-medium", "reviewer-sol-high", "judge-sol-xhigh"}.issubset(config["agents"])
 assert config["agents"]["scout-luna-low"]["config_file"].endswith("/agents/scout-luna-low.toml")
 assert config["tui"]["status_line"] == [
@@ -42,9 +59,14 @@ PY
 for name in scout-luna-low worker-terra-medium reviewer-sol-high judge-sol-xhigh; do
   test -f "$CODEX_HOME/agents/$name.toml"
 done
-test -f "$CODEX_HOME/prompts/ultracode.md"
+for name in handoff handoff-status handoff-cancel handoff-claude ultracode; do
+  test -f "$CODEX_HOME/skills/$name/SKILL.md"
+  head -n 1 "$CODEX_HOME/skills/$name/SKILL.md" | grep -qx -- '---'
+  grep -q "^name: $name\$" "$CODEX_HOME/skills/$name/SKILL.md"
+done
+test ! -e "$CODEX_HOME/prompts"
 if command -v codex >/dev/null 2>&1; then
-  CODEX_HOME="$CODEX_HOME" codex features list > "$T/codex-parse.log" 2>&1
+  CODEX_HOME="$CODEX_HOME" command codex features list > "$T/codex-parse.log" 2>&1
 fi
 
 # Cumulative usage is intentionally above the window; current context is 80%.
@@ -69,7 +91,7 @@ test ! -f "$PENDING"
 
 # Reinstall is a no-op; stale owned policy content is refreshed on upgrade.
 bash "$ROOT/install.sh" > "$T/install-2.log" 2>&1
-grep -q 'changed:  0' "$T/install-2.log"
+grep -q 'changed:  0' "$T/install-2.log" || { cat "$T/install-2.log" >&2; exit 1; }
 sed -i '' 's/# ULTRACODE - Codex multi-agent routing policy/# stale policy/' "$CODEX_HOME/AGENTS.md"
 bash "$ROOT/install.sh" > "$T/install-3.log" 2>&1
 grep -q 'refreshed overcodex ultracode block' "$T/install-3.log"
@@ -83,7 +105,11 @@ printf '%s\n' '[tui]' 'status_line = ["model-with-reasoning", "current-dir"]' > 
 HOME="$PRESERVE_HOME" CODEX_HOME="$PRESERVE_CODEX_HOME" PATH="$PRESERVE_HOME/.local/bin:$PATH" \
   bash "$ROOT/install.sh" > "$T/install-preserve-statusline.log" 2>&1
 python3 - "$PRESERVE_CODEX_HOME/config.toml" <<'PY'
-import sys, tomllib
+import sys
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
 with open(sys.argv[1], "rb") as f:
     config = tomllib.load(f)
 assert config["tui"]["status_line"] == ["model-with-reasoning", "current-dir"]
@@ -98,7 +124,11 @@ printf '%s\n' '[tui]' 'status_line_use_colors = false' > "$COLOR_ONLY_CODEX_HOME
 HOME="$COLOR_ONLY_HOME" CODEX_HOME="$COLOR_ONLY_CODEX_HOME" PATH="$COLOR_ONLY_HOME/.local/bin:$PATH" \
   bash "$ROOT/install.sh" > "$T/install-color-only-statusline.log" 2>&1
 python3 - "$COLOR_ONLY_CODEX_HOME/config.toml" <<'PY'
-import sys, tomllib
+import sys
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
 with open(sys.argv[1], "rb") as f:
     config = tomllib.load(f)
 assert config["tui"]["status_line"] == [
@@ -111,6 +141,13 @@ assert config["tui"]["status_line"] == [
 ]
 assert config["tui"]["status_line_use_colors"] is False
 PY
+
+# Handoff interop with overclaude: the reverse skill ships, and the pending path uses
+# the shared 12-hex sha256-of-cwd convention under the session's CODEX_HOME.
+grep -q 'claude-swap-backup/handoff-pending-' "$CODEX_HOME/skills/handoff-claude/SKILL.md" \
+  || grep -q 'STATE_DIR="$HOME/.claude-swap-backup"' "$CODEX_HOME/skills/handoff-claude/SKILL.md"
+want="$CODEX_HOME/overcodex/handoff-pending-$(printf '%s' /tmp/smoke-cwd | /usr/bin/shasum -a 256 | cut -c1-12).md"
+test "$("$HOME/.local/bin/codex-swap" path handoff --cwd /tmp/smoke-cwd)" = "$want"
 
 bash "$ROOT/uninstall.sh" > "$T/uninstall.log" 2>&1
 for name in scout-luna-low worker-terra-medium reviewer-sol-high judge-sol-xhigh; do

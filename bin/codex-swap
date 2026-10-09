@@ -18,8 +18,8 @@
 #                                "primary" for the default)
 #
 # Per account, "add" symlinks the SHARED config in from the primary home
-# (AGENTS.md, prompts/, hooks/, hooks.json, config.toml) so every account
-# runs the same routing/hooks setup. auth.json and all session/thread state
+# (AGENTS.md, skills/, hooks/, hooks.json, config.toml; prompts/ for older
+# setups) so every account runs the same routing/hooks/skills setup. auth.json and all session/thread state
 # are always per-account: real files, never symlinked, never copied.
 #
 # Subcommands:
@@ -27,6 +27,7 @@
 #   list [--json]           accounts, which is active, login state
 #   use <name|primary>      set the active-account marker (cold switch)
 #   which                   print the active account name + its CODEX_HOME
+#   path handoff [--cwd D]  this cwd's pending-handoff file (what the SessionStart hook reads)
 #   remove <name> [--yes]   delete an account (never removes primary)
 set -u
 
@@ -37,7 +38,7 @@ ACTIVE_FILE="$ACCOUNTS_ROOT/.active"
 PRIMARY_LABEL="primary"
 
 # Shared across every account (symlinked from the primary home by `add`).
-SHARED_ITEMS="AGENTS.md prompts hooks hooks.json config.toml"
+SHARED_ITEMS="AGENTS.md skills hooks hooks.json config.toml prompts"
 
 usage() {
   cat >&2 <<'EOF'
@@ -48,6 +49,7 @@ usage: codex-swap <subcommand> [args]
   use <name|primary>      set the active account marker (cold switch — restart
                           running codex sessions to adopt it)
   which                   print the active account name and its CODEX_HOME
+  path handoff [--cwd D]  print the pending-handoff file for cwd D (default: \$PWD)
   remove <name> [--yes]   delete an account's directory (never removes primary)
 
 "primary" always refers to the default $HOME/.codex and is never created,
@@ -74,13 +76,34 @@ home_for() {
   fi
 }
 
-active_name() {
+# marker_name — the raw active-account marker ("" when unset).
+marker_name() {
   local n=""
   if [ -f "$ACTIVE_FILE" ]; then
     n="$(tr -d '[:space:]' <"$ACTIVE_FILE" 2>/dev/null)"
   fi
-  [ -n "$n" ] || n="$PRIMARY_LABEL"
   printf '%s\n' "$n"
+}
+
+# active_name — the account new `codex` runs use: the marker, or primary when the
+# marker is unset, malformed, or names an account directory that no longer exists
+# (exactly what the codex() shell wrapper falls back to).
+active_name() {
+  local n
+  n="$(marker_name)"
+  if [ -z "$n" ] || [ "$n" = "$PRIMARY_LABEL" ] || ! charset_ok "$n" || [ ! -d "$ACCOUNTS_ROOT/$n" ]; then
+    n="$PRIMARY_LABEL"
+  fi
+  printf '%s\n' "$n"
+}
+
+# json_str <s> — s as a JSON string literal.
+json_str() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -Rn --arg s "$1" '$s'
+  else
+    printf '"%s"' "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr -d '\000-\037')"
+  fi
 }
 
 # human_age <epoch-seconds> — coarse relative-time string.
@@ -109,7 +132,8 @@ auth_status() {
   fi
 }
 
-# all_account_names — "primary" then every dir under ACCOUNTS_ROOT, one per line.
+# all_account_names — "primary" then every dir under ACCOUNTS_ROOT that `use`
+# would accept (valid name charset, not "primary"), one per line.
 all_account_names() {
   printf '%s\n' "$PRIMARY_LABEL"
   [ -d "$ACCOUNTS_ROOT" ] || return 0
@@ -117,6 +141,8 @@ all_account_names() {
   for d in "$ACCOUNTS_ROOT"/*/; do
     [ -d "$d" ] || continue
     n="$(basename "$d")"
+    charset_ok "$n" || continue
+    [ "$n" != "$PRIMARY_LABEL" ] || continue
     printf '%s\n' "$n"
   done
 }
@@ -139,6 +165,14 @@ cmd_add() {
   for item in $SHARED_ITEMS; do
     src="$PRIMARY_HOME/$item"
     dst="$acc_dir/$item"
+    # A skills/ dir Codex itself created in this account (holding only its
+    # bundled .system skills) is replaced by the shared link; Codex re-creates
+    # .system on its next start.
+    if [ "$item" = skills ] && [ -d "$dst" ] && [ ! -L "$dst" ] && [ -e "$src" ] \
+       && [ "$(ls -A "$dst" 2>/dev/null)" = ".system" ]; then
+      rm -rf "$dst" || { echo "  [!] could not replace Codex-created $dst" >&2; continue; }
+      echo "  [~] replacing Codex-created skills/ (only .system inside) with the shared link"
+    fi
     if [ -e "$dst" ] || [ -L "$dst" ]; then
       if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then
         echo "  [=] already linked: $item"
@@ -172,6 +206,10 @@ cmd_add() {
   echo "       codex-swap use $name"
   echo "     Then open a NEW terminal/tab (or: exec zsh) — this is a cold switch, running"
   echo "     codex sessions keep whatever account they started with."
+  echo "  3. Trust the overcodex hooks for THIS account: Codex trusts hooks per config path"
+  echo "     ($acc_dir/config.toml is a different path from the primary's), so the first"
+  echo "     codex start here shows \"Hooks need review\" — choose \"Trust all and continue\""
+  echo "     (or review them with /hooks). Until then the handoff hooks do not run here."
   echo
   echo "Caveat: config.toml is shared by symlink. If it sets an ABSOLUTE sqlite_home or"
   echo "log path, that storage would be shared too — keep such paths relative (the"
@@ -198,8 +236,8 @@ cmd_list() {
       login=false
       [ -f "$ch/auth.json" ] && login=true
       [ "$first" -eq 1 ] || printf ','
-      printf '{"name":"%s","codexHome":"%s","active":%s,"loggedIn":%s}' \
-        "$n" "$ch" "$([ "$n" = "$active" ] && echo true || echo false)" "$login"
+      printf '{"name":%s,"codexHome":%s,"active":%s,"loggedIn":%s}' \
+        "$(json_str "$n")" "$(json_str "$ch")" "$([ "$n" = "$active" ] && echo true || echo false)" "$login"
       first=0
     done <<EOF
 $(all_account_names)
@@ -244,10 +282,35 @@ cmd_use() {
   die "failed to write active marker $ACTIVE_FILE"
 }
 
+# cmd_path handoff [--cwd D] — the per-cwd pending-handoff file: $CODEX_HOME when
+# set (a running session), else the active account's home. Same 12-hex sha256-of-cwd
+# convention overclaude uses, so its `/handoff codex` writes where this resolves.
+cmd_path() {
+  local kind="${1:-}" cwd="$PWD" ch h
+  [ "$kind" = handoff ] || die "usage: codex-swap path handoff [--cwd <dir>]"
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --cwd) [ $# -ge 2 ] || die "path handoff: --cwd needs a directory"; cwd="$2"; shift ;;
+      --cwd=*) cwd="${1#--cwd=}" ;;
+      *) die "path handoff: unknown argument '$1' (usage: codex-swap path handoff [--cwd <dir>])" ;;
+    esac
+    shift
+  done
+  [ -n "$cwd" ] || die "path handoff: empty --cwd"
+  if [ -n "${CODEX_HOME:-}" ]; then ch="$CODEX_HOME"; else ch="$(home_for "$(active_name)")"; fi
+  h="$(printf '%s' "$cwd" | /usr/bin/shasum -a 256 | awk '{print $1}' | cut -c1-12)"
+  printf '%s/overcodex/handoff-pending-%s.md\n' "$ch" "$h"
+}
+
 cmd_which() {
-  local n ch
+  local n ch m
   n="$(active_name)"
+  m="$(marker_name)"
   ch="$(home_for "$n")"
+  if [ -n "$m" ] && [ "$m" != "$n" ]; then
+    echo "codex-swap: marker names '$m', which no longer exists — using '$PRIMARY_LABEL' (codex-swap use primary clears it)" >&2
+  fi
   echo "$n"
   echo "  CODEX_HOME: $ch"
   echo "  $(auth_status "$ch")"
@@ -287,7 +350,7 @@ cmd_remove() {
   rm -rf "$acc_dir" || die "failed to remove $acc_dir"
   echo "Removed account '$name' ($acc_dir)."
 
-  if [ "$(active_name)" = "$name" ]; then
+  if [ "$(marker_name)" = "$name" ]; then
     rm -f "$ACTIVE_FILE" 2>/dev/null
     echo "It was the active account — active account reset to '$PRIMARY_LABEL'."
     echo "Cold switch: restart running codex sessions to adopt this."
@@ -303,6 +366,7 @@ main() {
     list)   cmd_list "$@" ;;
     use)    cmd_use "$@" ;;
     which)  cmd_which "$@" ;;
+    path)   cmd_path "$@" ;;
     remove) cmd_remove "$@" ;;
     -h|--help|help|"") usage ;;
     *)

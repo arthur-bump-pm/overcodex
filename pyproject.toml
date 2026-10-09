@@ -4,12 +4,16 @@ build-backend = "hatchling.build"
 
 [project]
 name = "overcodex"
-version = "0.2.0"
-description = "Codex CLI, overclocked — cold multi-account switching, context-threshold handoff, instrumented statusline, and AGENTS.md routing policy for multi-agent workflows"
+version = "0.3.0"
+description = "Codex CLI, overclocked — cold multi-account switching, context-threshold handoff skills, native statusline defaults, and AGENTS.md routing policy for multi-agent workflows"
 readme = "README.md"
 license = { text = "MIT" }
 license-files = ["LICENSE"]
 requires-python = ">=3.9"
+# config.toml is only ever edited after a TOML parse check; Python < 3.11 has no
+# tomllib, so the pipx venv carries tomli there (`overcodex install` passes its
+# own interpreter to install.sh).
+dependencies = ['tomli>=1.1; python_version < "3.11"']
 authors = [{ name = "arthur-bump-pm" }]
 keywords = ["codex", "codex-cli", "cli", "dotfiles"]
 classifiers = [
@@ -39,7 +43,8 @@ packages = ["src/overcodex"]
 "hooks" = "overcodex/payload/hooks"
 "config" = "overcodex/payload/config"
 "codex" = "overcodex/payload/codex"
-"prompts" = "overcodex/payload/prompts"
+"skills" = "overcodex/payload/skills"
+"lib" = "overcodex/payload/lib"
 "agents" = "overcodex/payload/agents"
 "shell" = "overcodex/payload/shell"
 "skill" = "overcodex/payload/skill"
@@ -62,7 +67,8 @@ include = [
     "/hooks",
     "/config",
     "/codex",
-    "/prompts",
+    "/skills",
+    "/lib",
     "/agents",
     "/shell",
     "/skill",

@@ -35,6 +35,6 @@ case "$trigger" in
     *)      exit 0 ;;
 esac
 
-jq -n --arg msg "context precompact (${trigger}) - ${why}; older turns are about to be summarized. This is the last chance to /prompts:handoff before that detail is gone." \
+jq -n --arg msg "context precompact (${trigger}) - ${why}; older turns are about to be summarized. This is the last chance to type \$handoff before that detail is gone." \
     '{systemMessage: $msg}'
 exit 0

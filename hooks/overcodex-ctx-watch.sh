@@ -6,7 +6,7 @@
 # piggyback on) and, when usage crosses a new threshold, injects a
 # handoff-offer note into the turn via hookSpecificOutput.additionalContext.
 # Contract: always exit 0, silent on every error path, defensive jq parsing,
-# no state writes on the /handoff skip path.
+# no state writes on the $handoff skip path.
 exec 2>/dev/null
 set -u
 
@@ -25,12 +25,15 @@ CTX_DIR="$CODEX_HOME/overcodex/ctx"
 INPUT="$(cat)" || INPUT=""
 command -v jq >/dev/null 2>&1 || exit 0
 
-# Skip path FIRST — before any state read/write. Matches the /prompts:handoff
-# custom-prompt convention this kit's prompts/ builder uses (see repo
-# README), plus /handoff and /swap as generic aliases in case those also end
-# up wired.
+# Skip path FIRST — before any state read/write. The handoff flow is a Codex
+# skill invoked with a `$handoff` / `$handoff-claude` mention anywhere in the
+# prompt (Codex 0.158 removed `/prompts:*` custom prompts); /handoff, /swap and
+# the legacy /prompts:handoff spelling are skipped too.
 prompt="$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null)"
 case "$prompt" in
+    *'$handoff'*) exit 0 ;;
+esac
+case "$(printf '%s' "$prompt" | sed 's/^[[:space:]]*//')" in
     "/handoff"*|"/swap"*|"/prompts:handoff"*) exit 0 ;;
 esac
 
@@ -79,7 +82,7 @@ for t in "$T1" "$T2" "$T3"; do
     [ "$pct" -ge "$t" ] && T=$t
 done
 if [ "$T" -gt "$fired" ]; then
-    jq -n --arg ctx "[context-watch] Context is at ${pct}%. After fully completing the user's current request, tell them context is filling up and OFFER /prompts:handoff to continue in a fresh session. Do NOT invoke the handoff flow yourself unless the user explicitly accepts in their own message — an offer you made is not acceptance. If they decline or ignore the offer, drop the subject; this notice will re-appear at the next threshold." \
+    jq -n --arg ctx "[context-watch] Context is at ${pct}%. After fully completing the user's current request, tell them context is filling up and OFFER a handoff to a fresh session (they can type \$handoff, or say yes). Do NOT invoke the handoff skill yourself unless the user explicitly accepts in their own message — an offer you made is not acceptance. If they decline or ignore the offer, drop the subject; this notice will re-appear at the next threshold." \
         '{hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext: $ctx}}'
     fired=$T
     changed=1

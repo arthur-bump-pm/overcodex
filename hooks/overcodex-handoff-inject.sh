@@ -5,19 +5,24 @@
 # Contract: always exit 0, silent on every error path, defensive jq parsing,
 # tolerate a missing state root.
 #
-# Schema notes (see config/hooks.json header for the full write-up):
-# session-start.command.input carries `source`: "startup"|"resume"|"clear"|
-# "compact". We act ONLY on "startup" — mirroring overclaude's Claude Code
-# matcher, which is also "startup"-only — so a mid-session /clear, a `codex
-# resume`, or the SessionStart that fires right after PreCompact's own
-# auto-compaction does not re-inject a stale package. This is a deliberate,
-# possibly-too-narrow choice: needs live validation that `codex resume` does
-# NOT also need this path (if handoff packages should survive a resume too,
-# widen to `startup|resume`).
-# session-start.command.output supports hookSpecificOutput.additionalContext
-# (hookEventName must echo "SessionStart") — that's how the package reaches
-# the new session; there is no plain-stdout passthrough the way Claude Code's
-# UserPromptSubmit works, so output MUST be well-formed JSON.
+# Payload (Codex 0.158, verified via app-server): session_id, transcript_path,
+# cwd, hook_event_name, model, permission_mode, source. `source` is
+# "startup"|"resume"|"clear"|"compact"; the config block also sets
+# matcher = "startup", and this script re-checks it, so a /clear, a `codex
+# resume`, or the SessionStart after a compaction never re-injects a package.
+# Output: hookSpecificOutput.additionalContext (hookEventName "SessionStart")
+# — there is no plain-stdout passthrough, so output MUST be well-formed JSON.
+# The handler's additionalContextLimit (config/hooks-block.toml.tpl) keeps
+# Codex from spilling/middle-truncating a package within the ~8,000-byte
+# budget the handoff skills enforce.
+#
+# Home resolution: Codex passes NO CODEX_HOME to hooks — a hook only inherits
+# the environment the `codex` process was started with (the codex() shell
+# wrapper sets it per account as an env prefix). The $handoff skills resolve
+# the state dir the same way, `${CODEX_HOME:-$HOME/.codex}`, so writer and
+# reader always agree. The active-account marker is deliberately NOT used
+# here: a `codex` started outside the wrapper runs on ~/.codex no matter what
+# the marker says, and so do its skills.
 exec 2>/dev/null
 set -u
 
@@ -35,23 +40,11 @@ source_field="$(printf '%s' "$INPUT" | jq -r '.source // empty' 2>/dev/null)"
 cwd="$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)"
 [ -n "$cwd" ] || cwd="$PWD"
 
-# Pending-file path: codex-swap would be the canonical resolver if/when it
-# grows a `path handoff --cwd` subcommand (it does not, as of this writing —
-# it's an account-swap tool only); fall back to the shared hash convention
-# (identical result) unconditionally today. The probe is kept for forward
-# compatibility and is harmless: an unknown codex-swap subcommand prints usage
-# to stderr (redirected away) and exits non-zero, leaving P empty.
-P=""
-if command -v codex-swap >/dev/null 2>&1; then
-    P="$(codex-swap path handoff --cwd "$cwd" 2>/dev/null)"
-elif [ -x "$HOME/.local/bin/codex-swap" ]; then
-    P="$("$HOME/.local/bin/codex-swap" path handoff --cwd "$cwd" 2>/dev/null)"
-fi
-if [ -z "$P" ]; then
-    h="$(printf '%s' "$cwd" | /usr/bin/shasum -a 256 | awk '{print $1}' | cut -c1-12)"
-    [ -n "$h" ] || exit 0
-    P="$STATE_ROOT/handoff-pending-$h.md"
-fi
+# Pending file: shared 12-hex sha256-of-cwd convention (overclaude's
+# `/handoff codex` and `codex-swap path handoff` compute the same name).
+h="$(printf '%s' "$cwd" | /usr/bin/shasum -a 256 | awk '{print $1}' | cut -c1-12)"
+[ -n "$h" ] || exit 0
+P="$STATE_ROOT/handoff-pending-$h.md"
 
 [ -f "$P" ] || exit 0
 

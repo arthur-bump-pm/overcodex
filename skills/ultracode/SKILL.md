@@ -1,11 +1,13 @@
 ---
-description: "Plan and execute a complex task with Codex subagents, model-aware routing, and independent verification."
-argument-hint: "[task or objective]"
+name: ultracode
+description: "Plan and execute a complex task with Codex subagents: model-aware routing to the overcodex scout/worker/reviewer/judge roles, explicit ownership, and independent verification."
+metadata:
+  short-description: "Explicit multi-agent execution with overcodex routing"
 ---
 
-# /prompts:ultracode — explicit Codex multi-agent execution
+# $ultracode — explicit Codex multi-agent execution
 
-Use the Codex-native UltraCode policy in `$CODEX_HOME/AGENTS.md`.
+Use the Codex-native UltraCode policy in `$CODEX_HOME/AGENTS.md` (the overcodex ultracode block). The objective is whatever the user wrote alongside `$ultracode`.
 
 1. Restate the requested objective and split it into independent workstreams.
 2. Classify each stream and choose the best registered Codex role/model/effort for it. Use the exact `agent_type` and `fork_turns = "none"` fields when spawning.

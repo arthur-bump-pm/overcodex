@@ -56,7 +56,7 @@ for t in "$T1" "$T2" "$T3"; do
 done
 
 if [ "$pct" -ge "$T1" ] && [ "$band" -gt "$bannered" ]; then
-    jq -n --arg msg "context ${pct}% - /prompts:handoff available" '{systemMessage: $msg}'
+    jq -n --arg msg "context ${pct}% - type \$handoff to continue in a fresh session" '{systemMessage: $msg}'
     mkdir -p "$CTX_DIR" 2>/dev/null || exit 0
     tmp="$state.tmp.$$"
     printf '{"fired":%d,"bannered":%d}\n' "$fired" "$band" > "$tmp" 2>/dev/null && mv -f "$tmp" "$state" 2>/dev/null

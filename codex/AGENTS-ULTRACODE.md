@@ -39,9 +39,9 @@ Use these exact Codex custom-agent types when their role fits:
 | `reviewer-sol-high` | Sol / high | Independent correctness, security, regression, and test review |
 | `judge-sol-xhigh` | Sol / xhigh | Contradiction resolution and subtle terminal verdicts |
 
-Codex effort compatibility is model-specific. GPT-5.5 supports `none`, `low`, `medium`, `high`, and `xhigh`. GPT-5.6 Sol/Terra/Luna additionally support `max`. Keep `xhigh` as the portable judge default; select `max` only for a GPT-5.6 task whose quality requirement justifies extra cost and latency. Never write `ultra` as a Codex `model_reasoning_effort` value.
+Codex effort support is model-specific (Codex 0.158 model catalog): every listed model accepts `low`, `medium`, `high`, and `xhigh`; `max` is also available on GPT-6 Astra/Sol/Luna and GPT-5.6 Sol/Terra/Luna; `ultra` only on `gpt-6-astra`, `gpt-6-sol`, `gpt-5.6-sol`, and `gpt-5.6-terra` (never on a Luna model; the legacy `gpt-5.5` stops at `xhigh`). No model accepts none as an effort. The catalog default model is `gpt-6-astra`. Keep `xhigh` as the portable judge default; select `max` or `ultra` only on a model that lists it, for a quality-critical task that justifies the extra cost and latency. Never write an effort the selected model does not list (for example `ultra` on `gpt-5.6-luna`).
 
-Use the parent Sol session for final synthesis. A high or xhigh parent effort may orchestrate proactively, but it does not remove the need for explicit role and scope selection.
+Use the parent session (the catalog default `gpt-6-astra`, or the Sol model you selected) for final synthesis. A high or xhigh parent effort may orchestrate proactively, but it does not remove the need for explicit role and scope selection.
 
 When dispatching one of these roles, the `spawn_agent` call MUST set `agent_type` to the exact name above and `fork_turns` to `"none"`. Put all required task context in the child message. `task_name` is only a label and does not select a model; omitting `agent_type` silently inherits the parent model, while a full-history fork rejects role/model overrides.
 
@@ -56,7 +56,7 @@ When dispatching one of these roles, the `spawn_agent` call MUST set `agent_type
 - Reduce fan-out before lowering verification quality. The default `agents.max_depth = 1` is appropriate unless the user explicitly requests recursive delegation.
 
 ## Floors
-- User-visible final synthesis with no downstream check: parent Sol session.
+- User-visible final synthesis with no downstream check: the parent session (Astra or Sol class).
 - Security, auth, concurrency, money math, destructive operations, and migrations: `reviewer-sol-high` minimum.
 - A subtle disputed verdict: `judge-sol-xhigh`.
 - Bulk or repetitive work stays on Luna or Terra even when the parent runs at high or xhigh effort.

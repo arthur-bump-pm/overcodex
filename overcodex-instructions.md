@@ -29,9 +29,10 @@ Verify:
    - worker: gpt-5.6-terra, medium
    - reviewer: gpt-5.6-sol, high
    - judge: gpt-5.6-sol, xhigh
-4. No invalid "ultra" model_reasoning_effort value is used.
+4. Every model_reasoning_effort is one the role's model lists (e.g. no `ultra` on a Luna model).
 5. The repository root AGENTS.md is present and instructs complex tasks to use UltraCode delegation.
-6. ./tests/smoke.sh passes.
+6. ./tests/run.sh passes.
+7. Hook trust: tell me to start codex and choose "Trust all and continue" at "Hooks need review" — once per codex-swap account.
 
 Preserve unrelated AGENTS.md, config.toml, and credentials. Do not overwrite unrelated configuration. Report all changed files, registered agents, model/effort settings, test results, and whether Codex must restart.
 ```
