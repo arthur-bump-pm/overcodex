@@ -211,7 +211,8 @@ A plain `git push` updates git installs only — **PyPI users get changes only v
 
 | Version | Date | Status | Highlights |
 |---|---|---|---|
-| **0.3.0** | 2026-10-09 | ✅ released | Handoff flow ported to Codex 0.158 skills (`$handoff`, `$handoff-status`, `$handoff-cancel`, `$handoff-claude`, `$ultracode`); `codex-swap path handoff`; hook-trust guidance + `overcodex doctor`; config.toml edits validated and Codex-written tables preserved (no more data loss on uninstall/upgrade; user hooks, role overrides, file modes, CRLF and damaged markers handled safely); hooks block refreshes on upgrade; `additionalContextLimit` + `matcher = "startup"` for SessionStart; `codex()` wrapper no longer exports `CODEX_HOME`; release gate + CI; `sync.sh --dry-run` no longer writes |
+| **0.3.1** | 2026-10-09 | ✅ released | Same as 0.3.0, with the CI Python fix that let it reach PyPI |
+| 0.3.0 | 2026-10-09 | GitHub release only (CI blocked the PyPI publish) | Handoff flow ported to Codex 0.158 skills (`$handoff`, `$handoff-status`, `$handoff-cancel`, `$handoff-claude`, `$ultracode`); `codex-swap path handoff`; hook-trust guidance + `overcodex doctor`; config.toml edits validated and Codex-written tables preserved (no more data loss on uninstall/upgrade; user hooks, role overrides, file modes, CRLF and damaged markers handled safely); hooks block refreshes on upgrade; `additionalContextLimit` + `matcher = "startup"` for SessionStart; `codex()` wrapper no longer exports `CODEX_HOME`; release gate + CI; `sync.sh --dry-run` no longer writes |
 | 0.2.0 | 2026-07-23 | released | Portable UltraCode orchestration (four routed agent roles, OpenClaw skill), native footer defaults |
 | 0.1.1 | 2026-07-17 | released | Docs: codext hot-swap investigation |
 | 0.1.0 | 2026-07-17 | released | Codex CLI port of overclaude: codex-swap, handoff, hooks, AGENTS.md routing |

@@ -37,14 +37,19 @@ jobs:
 
       # No Codex CLI on the runner: test_codex_live.sh skips itself.
       - name: Test suite (macOS /bin/bash 3.2 — what users' `env bash` usually resolves to)
-        run: PATH=/bin:/usr/bin:$PATH OVERCODEX_TEST_PYTHON="$(command -v python3)" OVERCODEX_REQUIRE_WHEEL=1 /bin/bash tests/run.sh
+        # Resolve setup-python's python3 BEFORE /usr/bin goes first on PATH: in a
+        # prefix assignment list, bash applies PATH=... to the later $(...).
+        run: |
+          PY="$(command -v python3)"
+          PATH=/bin:/usr/bin:$PATH OVERCODEX_TEST_PYTHON="$PY" OVERCODEX_REQUIRE_WHEEL=1 /bin/bash tests/run.sh
 
       - name: Test suite (bash 5)
         run: |
           command -v brew >/dev/null && { brew list bash >/dev/null 2>&1 || brew install bash; }
           B5="$(brew --prefix)/bin/bash"
           "$B5" --version | head -n 1
-          OVERCODEX_TEST_PYTHON="$(command -v python3)" OVERCODEX_REQUIRE_WHEEL=1 "$B5" tests/run.sh
+          PY="$(command -v python3)"
+          OVERCODEX_TEST_PYTHON="$PY" OVERCODEX_REQUIRE_WHEEL=1 "$B5" tests/run.sh
 
       - name: Wheel carries the full payload
         run: |
