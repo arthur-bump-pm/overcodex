@@ -36,7 +36,7 @@ for c in 'codex-swap use' 'codex-swap which' 'codex-swap remove' 'codex-swap lis
 done
 assert_absent "$(cat "$REPO/AGENTS.md" "$REPO/codex/AGENTS-ULTRACODE.md" "$REPO/overcodex-instructions.md" "$REPO/README.md")" '`none`' "no doc claims a \`none\` effort"
 assert_contains "$(cat "$REPO/codex/AGENTS-ULTRACODE.md")" "ultra" "routing policy documents the ultra effort"
-assert_contains "$(cat "$REPO/codex/AGENTS-ULTRACODE.md")" "gpt-6-astra" "routing policy names the catalog default model"
+assert_contains "$(cat "$REPO/codex/AGENTS-ULTRACODE.md")" "gpt-6.1-sol" "routing policy names the catalog's first model"
 assert_eq "$(grep -rl '/Users/[A-Za-z]' "$REPO"/README.md "$REPO"/skills "$REPO"/hooks "$REPO"/lib "$REPO"/config 2>/dev/null)" "" "no /Users/<name> paths in shipped files"
 
 # Built wheel. CI and sync.sh's release gate set OVERCODEX_REQUIRE_WHEEL=1, so

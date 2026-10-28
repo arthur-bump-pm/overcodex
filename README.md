@@ -109,7 +109,7 @@ The detailed agent-facing activation contract is in [`AGENT-SETUP.md`](AGENT-SET
 
 The complete copy-paste versions are in [`overcodex-instructions.md`](overcodex-instructions.md).
 
-**Models and reasoning effort.** Codex's model catalog (as of Codex 0.158) defaults to `gpt-6-astra`. Every listed model accepts `low`, `medium`, `high`, and `xhigh`; `max` is also available on GPT-6 Astra/Sol/Luna and GPT-5.6 Sol/Terra/Luna; `ultra` only on `gpt-6-astra`, `gpt-6-sol`, `gpt-5.6-sol`, and `gpt-5.6-terra` (not on Luna models; the legacy `gpt-5.5` stops at `xhigh`). No model accepts none as an effort. The bundled judge uses the portable `xhigh`; reserve `max`/`ultra` for a quality-critical adjudication on a model that lists it. Installing overcodex does not replace your existing model or effort preference.
+**Models and reasoning effort.** Codex's model catalog (as of Codex 0.162) lists `gpt-6.1-sol` first (the workhorse); `gpt-6-astra` is the frontier model for the most demanding work. Every listed model accepts `low`, `medium`, `high`, and `xhigh`; `max` is also available on every current model (GPT-6.1 Sol/Terra, GPT-6 Astra/Sol/Luna) and on GPT-5.6 Sol/Terra/Luna; `ultra` on `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-astra`, `gpt-6-sol`, `gpt-5.6-sol` and `gpt-5.6-terra`, never on a Luna model (the legacy `gpt-5.5` stops at `xhigh`). No model accepts none as an effort. The bundled judge uses the portable `xhigh`; reserve `max`/`ultra` for a quality-critical adjudication on a model that lists it. Installing overcodex does not replace your existing model or effort preference.
 
 ### Hooks + skills
 `SessionStart` (`matcher = "startup"`, `additionalContextLimit = 8000` so a handoff package is not spilled/middle-truncated) / `UserPromptSubmit` / `Stop` / `PreCompact` hooks, wired via a marker-wrapped `[hooks]` block at the end of `config.toml`, plus five skills under `$CODEX_HOME/skills/<name>/SKILL.md` for the handoff flow and explicit multi-agent runs.
@@ -211,7 +211,8 @@ A plain `git push` updates git installs only — **PyPI users get changes only v
 
 | Version | Date | Status | Highlights |
 |---|---|---|---|
-| **0.3.1** | 2026-10-09 | ✅ released | Same as 0.3.0, with the CI Python fix that let it reach PyPI |
+| **0.3.2** | 2026-10-28 | ✅ released | The four bundled roles move to the current models (scout `gpt-6-luna`, worker `gpt-6.1-terra`, reviewer and judge `gpt-6.1-sol`; efforts unchanged), and the effort and default-model notes match Codex 0.162's catalog |
+| 0.3.1 | 2026-10-09 | ✅ released | Same as 0.3.0, with the CI Python fix that let it reach PyPI |
 | 0.3.0 | 2026-10-09 | GitHub release only (CI blocked the PyPI publish) | Handoff flow ported to Codex 0.158 skills (`$handoff`, `$handoff-status`, `$handoff-cancel`, `$handoff-claude`, `$ultracode`); `codex-swap path handoff`; hook-trust guidance + `overcodex doctor`; config.toml edits validated and Codex-written tables preserved (no more data loss on uninstall/upgrade; user hooks, role overrides, file modes, CRLF and damaged markers handled safely); hooks block refreshes on upgrade; `additionalContextLimit` + `matcher = "startup"` for SessionStart; `codex()` wrapper no longer exports `CODEX_HOME`; release gate + CI; `sync.sh --dry-run` no longer writes |
 | 0.2.0 | 2026-07-23 | released | Portable UltraCode orchestration (four routed agent roles, OpenClaw skill), native footer defaults |
 | 0.1.1 | 2026-07-17 | released | Docs: codext hot-swap investigation |

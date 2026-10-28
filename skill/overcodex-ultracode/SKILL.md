@@ -21,7 +21,7 @@ Use this skill for complex, cross-file, risky, or explicitly multi-agent work. K
 3. Default to isolated context and one delegation level. Do not let a child recursively spawn more workers unless the task explicitly requires it.
 4. If the platform cannot enforce role or model routing, preserve the role prompt but report that routing is advisory.
 
-Codex effort naming is model-specific: every model accepts `low`, `medium`, `high`, and `xhigh`; `max` is also available on GPT-6 Astra/Sol/Luna and GPT-5.6 Sol/Terra/Luna; `ultra` only on `gpt-6-astra`, `gpt-6-sol`, `gpt-5.6-sol`, and `gpt-5.6-terra`. Use `xhigh` for portable high-assurance review and reserve `max`/`ultra` for a quality-critical adjudication on a model that lists it.
+Codex effort naming is model-specific: every model accepts `low`, `medium`, `high`, and `xhigh`; `max` is also available on every current model (GPT-6.1 Sol/Terra, GPT-6 Astra/Sol/Luna) and on GPT-5.6 Sol/Terra/Luna; `ultra` on `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-astra`, `gpt-6-sol`, `gpt-5.6-sol` and `gpt-5.6-terra`, never on a Luna model. Use `xhigh` for portable high-assurance review and reserve `max`/`ultra` for a quality-critical adjudication on a model that lists it.
 
 ## Task-aware planning
 

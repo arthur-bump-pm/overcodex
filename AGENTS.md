@@ -17,6 +17,6 @@ When the user asks to activate, install, or use Overcodex/UltraCode:
 
 For complex work with two or more independent streams, use the UltraCode planning gate and delegate by default. Select the lowest-cost Codex role that satisfies the task's verification floor, use explicit ownership boundaries, run objective checks before review, and escalate uncertainty or contradictory evidence. If the task is small or inherently sequential, keep it in the parent and state why.
 
-Use only the effort names the selected model lists in Codex's model catalog: every model accepts `low`, `medium`, `high`, and `xhigh`; `max` is also available on GPT-6 Astra/Sol/Luna and GPT-5.6 Sol/Terra/Luna; `ultra` only on `gpt-6-astra`, `gpt-6-sol`, `gpt-5.6-sol`, and `gpt-5.6-terra`. No model accepts none as an effort. The catalog default model is `gpt-6-astra`.
+Use only the effort names the selected model lists in Codex's model catalog: every model accepts `low`, `medium`, `high`, and `xhigh`; `max` is also available on every current model (GPT-6.1 Sol/Terra, GPT-6 Astra/Sol/Luna) and on GPT-5.6 Sol/Terra/Luna; `ultra` on `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-astra`, `gpt-6-sol`, `gpt-5.6-sol` and `gpt-5.6-terra`, never on a Luna model. No model accepts none as an effort. The catalog's first model is `gpt-6.1-sol` (the workhorse); `gpt-6-astra` is the frontier model for the most demanding work.
 
 This file is a repository-local instruction layer. The global installer remains the mechanism for making the same policy apply across all Codex projects.

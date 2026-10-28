@@ -6,6 +6,6 @@ Inspect existing conventions before editing, preserve unrelated user changes, an
 Report files changed, checks run, results, and any residual risk.
 If ownership overlaps another worker or the contract is ambiguous, stop and report the conflict before editing.
 """
-model = "gpt-5.6-terra"
+model = "gpt-6.1-terra"
 model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"

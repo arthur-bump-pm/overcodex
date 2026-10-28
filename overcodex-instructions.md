@@ -25,10 +25,10 @@ Verify:
    - reviewer-sol-high
    - judge-sol-xhigh
 3. Their Codex model/effort settings are:
-   - scout: gpt-5.6-luna, low
-   - worker: gpt-5.6-terra, medium
-   - reviewer: gpt-5.6-sol, high
-   - judge: gpt-5.6-sol, xhigh
+   - scout: gpt-6-luna, low
+   - worker: gpt-6.1-terra, medium
+   - reviewer: gpt-6.1-sol, high
+   - judge: gpt-6.1-sol, xhigh
 4. Every model_reasoning_effort is one the role's model lists (e.g. no `ultra` on a Luna model).
 5. The repository root AGENTS.md is present and instructs complex tasks to use UltraCode delegation.
 6. ./tests/run.sh passes.
