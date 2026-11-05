@@ -199,7 +199,7 @@ flowchart TD
 ```bash
 ./tests/run.sh       # full suite in throwaway $HOMEs (also drives `codex app-server` when codex is installed)
 ./sync.sh            # live setup -> repo: scrub-gated diff, commit, push
-./sync.sh --release  # + release gate (shellcheck + tests), version bump unless already ahead, GitHub release -> PyPI
+./sync.sh --release  # + release gate (shellcheck + tests), version bump unless already ahead, build + upload to PyPI from this Mac, GitHub release
 ./sync.sh --dry-run  # preview either
 ```
 

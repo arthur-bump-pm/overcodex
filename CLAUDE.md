@@ -5,10 +5,12 @@ This repo is the **published** overcodex kit: GitHub (arthur-bump-pm/overcodex) 
 ## After ANY change to the kit
 
 1. **Changes made to the live setup** (`$CODEX_HOME/hooks/...`, `$CODEX_HOME/skills/<name>/SKILL.md`, `$CODEX_HOME/AGENTS.md`'s overcodex block, `~/.local/bin/codex-swap`, the `~/.zshrc` block): run `./sync.sh` to pull them into the repo. Never hand-copy — sync.sh has the personal-data scrub gate.
-2. **Ship it**: `./sync.sh --release` — syncs, runs the release gate (shellcheck `-S error` + `tests/run.sh` under /bin/bash 3.2) before anything is committed, patch-bumps `version` in pyproject.toml (unless it is already ahead of the last tag — then that version is released as-is), commits, pushes, and cuts a GitHub release. The `publish.yml` workflow (PyPI trusted publishing; reuses the push run's `test.yml` verdict) takes it from there. Use `--dry-run` first when unsure.
+2. **Ship it**: `./sync.sh --release` — syncs, runs the release gate (shellcheck `-S error` + `tests/run.sh` under /bin/bash 3.2) before anything is committed, patch-bumps `version` in pyproject.toml (unless it is already ahead of the last tag — then that version is released as-is), commits, builds the wheel and sdist on this Mac, runs `twine check`, uploads them to PyPI with `uv publish`, then pushes and cuts a GitHub release (notes only). The PyPI token is read from the login Keychain (service `pypi-overcodex`, account `__token__`); the owner stores it once with `security add-generic-password -U -a __token__ -s pypi-overcodex -w` and it is never printed or written to a file. Use `--dry-run` first when unsure.
 3. **`git push` alone does NOT update PyPI.** Only a release does. If a change matters to other machines, it needs a release.
 
 ## Rules
+
+- **No GitHub Actions, ever** (owner's rule, 5 Nov 2026): no `.github/workflows`, no CI on GitHub, no Actions-based publishing. Actions is turned off on the repo.
 
 - Keep repo copies and live files **byte-identical** — that's what keeps sync.sh diffs clean. If you edit a kit file in the repo directly, also run `./install.sh` (or `overcodex install`) to propagate it to the live setup.
 - Never weaken the scrub gate in sync.sh. No usernames, emails, or `/Users/...` paths in any committed file — use `$HOME`, `$CODEX_HOME`, generic aliases (`work`/`personal`), and `myproject` in examples.

@@ -39,7 +39,7 @@ assert_contains "$(cat "$REPO/codex/AGENTS-ULTRACODE.md")" "ultra" "routing poli
 assert_contains "$(cat "$REPO/codex/AGENTS-ULTRACODE.md")" "gpt-6.1-sol" "routing policy names the catalog's first model"
 assert_eq "$(grep -rl '/Users/[A-Za-z]' "$REPO"/README.md "$REPO"/skills "$REPO"/hooks "$REPO"/lib "$REPO"/config 2>/dev/null)" "" "no /Users/<name> paths in shipped files"
 
-# Built wheel. CI and sync.sh's release gate set OVERCODEX_REQUIRE_WHEEL=1, so
+# Built wheel. sync.sh's release gate sets OVERCODEX_REQUIRE_WHEEL=1, so
 # a missing `build` module fails loudly there instead of skipping this check.
 if ! "$PY" -c 'import build' >/dev/null 2>&1; then
   if [ "${OVERCODEX_REQUIRE_WHEEL:-}" = 1 ]; then
